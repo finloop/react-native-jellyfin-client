@@ -17,6 +17,7 @@ import RemoteControlManager from '@multi-tv/shared-ui/src/app/remote-control/Rem
 import { SupportedKeys } from '@multi-tv/shared-ui/src/app/remote-control/SupportedKeys';
 import VideoOverlay from '@multi-tv/shared-ui/src/components/player/VideoOverlay.vega';
 import ExitButton from '@multi-tv/shared-ui/src/components/player/ExitButton';
+import JellyfinClient from '@multi-tv/shared-ui/src/services/JellyfinClient';
 import { RootStackParamList } from '../navigation/types';
 import { HlsJsPlayer } from '../store/hlsjsplayer/HlsJsPlayer';
 import Document from '../store/hlsjsplayer/polyfills/DocumentPolyfill';
@@ -31,7 +32,7 @@ type PlayerScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 
 export default function VegaPlayerScreen() {
   const route = useRoute<PlayerScreenRouteProp>();
   const navigation = useNavigation<PlayerScreenNavigationProp>();
-  const { movie } = route.params;
+  const { movie, audioTracks = [], itemId, accessToken, userId } = route.params;
   const isFocused = useIsFocused();
 
   const keplerAppStateManager: IKeplerAppStateManager = useKeplerAppStateManager();
@@ -40,20 +41,25 @@ export default function VegaPlayerScreen() {
   const [paused, setPaused] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(false);
   const [isVideoBuffering, setIsVideoBuffering] = useState(true);
-  const [isPlayerReady, setIsPlayerReady] = useState(false);   // surface gate: true after vp.initialize()
-  const [isVideoInitialized, setIsVideoInitialized] = useState(false); // controls gate: true after loadedmetadata
+  const [isPlayerReady, setIsPlayerReady] = useState(false);
+  const [isVideoInitialized, setIsVideoInitialized] = useState(false);
   const [isVideoEnded, setIsVideoEnded] = useState(false);
   const [isVideoError, setIsVideoError] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [selectedAudioTrackIndex, setSelectedAudioTrackIndex] = useState(
+    audioTracks.find((t) => t)?.index ?? 0,
+  );
+  const [isAudioPickerOpen, setIsAudioPickerOpen] = useState(false);
 
   const videoPlayerRef = useRef<VideoPlayer | null>(null);
   const hlsPlayerRef = useRef<HlsJsPlayer | null>(null);
   const surfaceHandleRef = useRef<string | null>(null);
+  const captionViewHandleRef = useRef<string | null>(null);
+  const pendingPlaybackRef = useRef<{ uri: string; startPosition?: number }>({ uri: movie });
   const hlsReadyRef = useRef(false);
   const canPlayFiredRef = useRef(false);
   const nearEndRef = useRef(false);
-  const captionViewHandleRef = useRef<string | null>(null);
   const hideControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentTimeRef = useRef(0);
   const durationRef = useRef(0);
@@ -64,8 +70,102 @@ export default function VegaPlayerScreen() {
   const showControls = useCallback(() => {
     setControlsVisible(true);
     if (hideControlsTimeoutRef.current) clearTimeout(hideControlsTimeoutRef.current);
-    hideControlsTimeoutRef.current = setTimeout(() => setControlsVisible(false), 5000);
+    hideControlsTimeoutRef.current = setTimeout(() => setControlsVisible(false), 500000);
   }, []);
+
+  const destroyPlayer = useCallback(() => {
+    hlsReadyRef.current = false;
+    canPlayFiredRef.current = false;
+    nearEndRef.current = false;
+    if (surfaceHandleRef.current && videoPlayerRef.current) {
+      videoPlayerRef.current.clearSurfaceHandle(surfaceHandleRef.current);
+      surfaceHandleRef.current = null;
+    }
+    if (captionViewHandleRef.current && videoPlayerRef.current) {
+      videoPlayerRef.current.clearCaptionViewHandle(captionViewHandleRef.current);
+      captionViewHandleRef.current = null;
+    }
+    hlsPlayerRef.current?.destroy();
+    hlsPlayerRef.current = null;
+    videoPlayerRef.current?.deinitialize();
+    (global as any).gmedia = null;
+    videoPlayerRef.current = null;
+    setIsPlayerReady(false);
+    setIsVideoInitialized(false);
+    setIsVideoBuffering(true);
+    setPaused(true);
+  }, []);
+
+  const initPlayer = useCallback(async (uri: string, startPosition = 0) => {
+    pendingPlaybackRef.current = { uri, startPosition };
+
+    const vp = new VideoPlayer();
+    (global as any).gmedia = vp;
+    videoPlayerRef.current = vp;
+
+    // isActive guards against stale closures if initPlayer is called again before this one completes
+    const isActive = () => videoPlayerRef.current === vp;
+
+    try {
+      if (componentInstance) {
+        await vp.setMediaControlFocus(componentInstance, null as any);
+      }
+    } catch {}
+
+    vp.addEventListener('loadedmetadata', () => {
+      if (!isActive()) return;
+      setDuration(vp.duration || 0);
+      setIsVideoInitialized(true);
+    });
+    vp.addEventListener('timeupdate', () => {
+      if (!isActive()) return;
+      const ct = vp.currentTime || 0;
+      setCurrentTime(ct);
+      setIsVideoBuffering(false);
+      nearEndRef.current = durationRef.current > 0 && ct >= durationRef.current - 2;
+    });
+    vp.addEventListener('ended', () => {
+      if (!isActive() || !nearEndRef.current) return;
+      setIsVideoEnded(true);
+    });
+    vp.addEventListener('waiting', () => {
+      if (!isActive()) return;
+      setIsVideoBuffering(true);
+    });
+    vp.addEventListener('playing', () => {
+      if (!isActive()) return;
+      setIsVideoBuffering(false);
+    });
+
+    await vp.initialize();
+    if (!isActive()) return;
+
+    vp.autoplay = false;
+    setIsPlayerReady(true);
+
+    Document.install();
+    Element.install();
+    TextDecoderPolyfill.install();
+    W3CMediaPolyfill.install();
+    MiscPolyfill.install();
+
+    const hlsPlayer = new HlsJsPlayer(vp);
+    hlsPlayerRef.current = hlsPlayer;
+    hlsPlayer.addPlayerEventListener('error', () => {
+      if (!isActive()) return;
+      setIsVideoError(true);
+    });
+    hlsReadyRef.current = true;
+
+    vp.addEventListener('canplay', () => {
+      if (!isActive() || canPlayFiredRef.current) return;
+      canPlayFiredRef.current = true;
+      if (surfaceHandleRef.current) {
+        vp.play();
+        setPaused(false);
+      }
+    });
+  }, [componentInstance]);
 
   const seek = useCallback((time: number) => {
     if (videoPlayerRef.current && durationRef.current) {
@@ -90,109 +190,30 @@ export default function VegaPlayerScreen() {
     showControls();
   }, [showControls]);
 
+  const changeAudioTrack = useCallback(async (newTrackIndex: number) => {
+    if (!accessToken || !userId || !itemId) return;
+
+    const seekTarget = currentTimeRef.current;
+    setSelectedAudioTrackIndex(newTrackIndex);
+
+    try {
+      const { url } = await JellyfinClient.getPlaybackUrl(accessToken, userId, itemId, newTrackIndex);
+      destroyPlayer();
+      await initPlayer(url, seekTarget);
+    } catch (e) {
+      console.error('[VegaPlayerScreen] Failed to change audio track', e);
+    }
+  }, [accessToken, userId, itemId, destroyPlayer, initPlayer]);
+
   const navigateBack = useCallback(() => {
-    if (surfaceHandleRef.current && videoPlayerRef.current) {
-      videoPlayerRef.current.clearSurfaceHandle(surfaceHandleRef.current);
-    }
-    if (captionViewHandleRef.current && videoPlayerRef.current) {
-      videoPlayerRef.current.clearCaptionViewHandle(captionViewHandleRef.current);
-    }
-    hlsPlayerRef.current?.destroy();
-    hlsPlayerRef.current = null;
-    videoPlayerRef.current?.deinitialize();
-    (global as any).gmedia = null;
-    videoPlayerRef.current = null;
+    destroyPlayer();
     setTimeout(() => navigation.goBack(), 300);
-  }, [navigation]);
+  }, [navigation, destroyPlayer]);
 
   useEffect(() => {
     if (!isFocused) return;
-
-    let cancelled = false;
-
-    const init = async () => {
-      const vp = new VideoPlayer();
-      (global as any).gmedia = vp;
-      videoPlayerRef.current = vp;
-
-      try {
-        if (componentInstance) {
-          await vp.setMediaControlFocus(componentInstance, null as any);
-        }
-      } catch {}
-
-      vp.addEventListener('loadedmetadata', () => {
-        if (cancelled) return;
-        setDuration(vp.duration || 0);
-        setIsVideoInitialized(true);
-      });
-      vp.addEventListener('timeupdate', () => {
-        if (cancelled) return;
-        const ct = vp.currentTime || 0;
-        setCurrentTime(ct);
-        setIsVideoBuffering(false);
-        nearEndRef.current = durationRef.current > 0 && ct >= durationRef.current - 2;
-      });
-      vp.addEventListener('ended', () => {
-        if (cancelled || !nearEndRef.current) return;
-        setIsVideoEnded(true);
-      });
-      vp.addEventListener('waiting', () => {
-        if (cancelled) return;
-        setIsVideoBuffering(true);
-      });
-      vp.addEventListener('playing', () => {
-        if (cancelled) return;
-        setIsVideoBuffering(false);
-      });
-
-      await vp.initialize();
-      if (cancelled) return;
-      vp.autoplay = false;
-      setIsPlayerReady(true);
-
-      Document.install();
-      Element.install();
-      TextDecoderPolyfill.install();
-      W3CMediaPolyfill.install();
-      MiscPolyfill.install();
-
-      const hlsPlayer = new HlsJsPlayer(vp);
-      hlsPlayerRef.current = hlsPlayer;
-      hlsPlayer.addPlayerEventListener('error', () => {
-        if (!cancelled) setIsVideoError(true);
-      });
-      hlsReadyRef.current = true;
-
-      vp.addEventListener('canplay', () => {
-        if (cancelled || canPlayFiredRef.current) return;
-        canPlayFiredRef.current = true;
-        if (surfaceHandleRef.current && videoPlayerRef.current) {
-          videoPlayerRef.current.play();
-          setPaused(false);
-        }
-      });
-    };
-
-    init().catch(() => setIsVideoError(true));
-
-    return () => {
-      cancelled = true;
-      hlsReadyRef.current = false;
-      canPlayFiredRef.current = false;
-      nearEndRef.current = false;
-      if (surfaceHandleRef.current && videoPlayerRef.current) {
-        videoPlayerRef.current.clearSurfaceHandle(surfaceHandleRef.current);
-      }
-      if (captionViewHandleRef.current && videoPlayerRef.current) {
-        videoPlayerRef.current.clearCaptionViewHandle(captionViewHandleRef.current);
-      }
-      hlsPlayerRef.current?.destroy();
-      hlsPlayerRef.current = null;
-      videoPlayerRef.current?.deinitialize();
-      (global as any).gmedia = null;
-      videoPlayerRef.current = null;
-    };
+    initPlayer(movie).catch(() => setIsVideoError(true));
+    return destroyPlayer;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [movie, isFocused]);
 
@@ -245,8 +266,9 @@ export default function VegaPlayerScreen() {
 
     if (hlsReadyRef.current && hlsPlayerRef.current) {
       hlsReadyRef.current = false;
+      const { uri, startPosition } = pendingPlaybackRef.current;
       hlsPlayerRef.current.load(
-        { uri: movie, secure: 'false', drm_scheme: '', drm_license_uri: '' },
+        { uri, secure: 'false', drm_scheme: '', drm_license_uri: '', startPosition },
         false,
       );
     }
@@ -255,11 +277,15 @@ export default function VegaPlayerScreen() {
       videoPlayerRef.current.play();
       setPaused(false);
     }
-  }, [movie]);
+  }, []);
 
   const onSurfaceViewDestroyed = useCallback((surfaceHandle: string) => {
-    videoPlayerRef.current?.clearSurfaceHandle(surfaceHandle);
-    surfaceHandleRef.current = null;
+    // Guard against clearing a handle on a newly created VideoPlayer after a reinit.
+    // destroyPlayer() nulls surfaceHandleRef before state triggers this unmount callback.
+    if (surfaceHandleRef.current === surfaceHandle) {
+      videoPlayerRef.current?.clearSurfaceHandle(surfaceHandle);
+      surfaceHandleRef.current = null;
+    }
   }, []);
 
   const onCaptionViewCreated = useCallback((captionHandle: string) => {
@@ -268,8 +294,10 @@ export default function VegaPlayerScreen() {
   }, []);
 
   const onCaptionViewDestroyed = useCallback((captionHandle: string) => {
-    videoPlayerRef.current?.clearCaptionViewHandle(captionHandle);
-    captionViewHandleRef.current = null;
+    if (captionViewHandleRef.current === captionHandle) {
+      videoPlayerRef.current?.clearCaptionViewHandle(captionHandle);
+      captionViewHandleRef.current = null;
+    }
   }, []);
 
   if (isVideoError) {
@@ -285,7 +313,7 @@ export default function VegaPlayerScreen() {
   }
 
   return (
-    <SpatialNavigationRoot isActive={isFocused}>
+    <SpatialNavigationRoot isActive={isFocused && !isAudioPickerOpen}>
       <View style={styles.container}>
         {isPlayerReady && (
           <>
@@ -311,6 +339,11 @@ export default function VegaPlayerScreen() {
             currentTime={currentTime}
             duration={durationRef.current}
             isBuffering={isVideoBuffering}
+            audioTracks={audioTracks}
+            selectedAudioTrackIndex={selectedAudioTrackIndex}
+            onAudioTrackChange={changeAudioTrack}
+            isAudioPickerOpen={isAudioPickerOpen}
+            onAudioPickerOpenChange={setIsAudioPickerOpen}
           />
         )}
       </View>

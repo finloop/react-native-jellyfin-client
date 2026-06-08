@@ -1,8 +1,8 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useMemo } from "react";
 import { View, StyleSheet, Animated } from "react-native";
-import { DefaultFocus } from "react-tv-space-navigation";
 import FocusablePressable from "../FocusablePressable";
 import SeekBar from "./SeekBar";
+import { AudioTrackPickerButton, AudioTrackPickerModal, AudioTrack } from "./AudioTrackPicker";
 import LoadingIndicator from "../LoadingIndicator";
 import { scaledPixels } from "../../hooks/useScale";
 import { safeZones } from "../../theme";
@@ -15,22 +15,13 @@ interface VideoOverlayProps {
   currentTime: number;
   duration: number;
   isBuffering?: boolean;
+  audioTracks?: AudioTrack[];
+  selectedAudioTrackIndex?: number;
+  onAudioTrackChange?: (index: number) => void;
+  isAudioPickerOpen: boolean;
+  onAudioPickerOpenChange: (open: boolean) => void;
 }
 
-/**
- * VideoOverlay for Vega/Kepler Platform
- *
- * This overlay component provides video playback controls with spatial navigation
- * for Fire TV devices. It appears on video start, auto-hides after 5 seconds,
- * and reappears when the user presses any remote button.
- *
- * Key features:
- * - Auto-hide/show with smooth fade animations (300ms)
- * - Spatial navigation support for remote control
- * - Exit button (top-left) and playback controls (bottom-center)
- * - Loading indicator during buffering
- * - Z-index: 10 (overlays above video surface and captions)
- */
 const VideoOverlay: React.FC<VideoOverlayProps> = React.memo(({
   visible,
   paused,
@@ -39,30 +30,35 @@ const VideoOverlay: React.FC<VideoOverlayProps> = React.memo(({
   currentTime,
   duration,
   isBuffering = false,
+  audioTracks = [],
+  selectedAudioTrackIndex = 0,
+  onAudioTrackChange,
+  isAudioPickerOpen,
+  onAudioPickerOpenChange,
 }) => {
   const opacity = useRef(new Animated.Value(0)).current;
 
+  const currentTrack = useMemo(
+    () => audioTracks.find((t) => t.index === selectedAudioTrackIndex),
+    [audioTracks, selectedAudioTrackIndex],
+  );
+
   useEffect(() => {
-    if (visible) {
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-    } else {
-      Animated.timing(opacity, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-    }
+    Animated.timing(opacity, {
+      toValue: visible ? 1 : 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
   }, [visible, opacity]);
+
+  // Close audio picker when overlay hides
+  useEffect(() => {
+    if (!visible) onAudioPickerOpenChange(false);
+  }, [visible, onAudioPickerOpenChange]);
 
   if (!visible) {
     return null;
   }
-
-  const styles = overlayStyles;
 
   return (
     <Animated.View style={[styles.container, { opacity }]}>
@@ -75,20 +71,34 @@ const VideoOverlay: React.FC<VideoOverlayProps> = React.memo(({
       />
 
       <View style={styles.bottomControls}>
-        <DefaultFocus>
+        <SeekBar currentTime={currentTime} duration={duration} />
+        <View style={styles.extendedControls}>
+          {audioTracks.length > 1 && (
+            <AudioTrackPickerButton
+              currentTrack={currentTrack}
+              onOpen={() => onAudioPickerOpenChange(true)}
+            />
+          )}
           <FocusablePressable
-            text={paused ? "Play" : "Pause"}
-            onSelect={onPlayPause}
+            text="Exit"
+            onSelect={onExit}
             style={styles.controlButton}
           />
-        </DefaultFocus>
-        <SeekBar currentTime={currentTime} duration={duration} />
+        </View>
       </View>
+
+      <AudioTrackPickerModal
+        visible={isAudioPickerOpen}
+        tracks={audioTracks}
+        selectedIndex={selectedAudioTrackIndex}
+        onSelect={onAudioTrackChange ?? (() => {})}
+        onClose={() => onAudioPickerOpenChange(false)}
+      />
     </Animated.View>
   );
 });
 
-const overlayStyles = StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
@@ -96,20 +106,24 @@ const overlayStyles = StyleSheet.create({
     zIndex: 10,
   },
   exitButton: {
-    position: "absolute",
-    top: scaledPixels(safeZones.actionSafe.vertical),
-    start: scaledPixels(safeZones.actionSafe.horizontal),
+    marginTop: scaledPixels(safeZones.actionSafe.vertical),
+    marginLeft: scaledPixels(safeZones.actionSafe.horizontal),
   },
   bottomControls: {
-    position: "absolute",
-    bottom: scaledPixels(safeZones.actionSafe.vertical),
-    start: scaledPixels(safeZones.actionSafe.horizontal),
-    end: scaledPixels(safeZones.actionSafe.horizontal),
+    marginBottom: scaledPixels(safeZones.actionSafe.vertical),
+    marginLeft: scaledPixels(safeZones.actionSafe.horizontal),
+    marginRight: scaledPixels(safeZones.actionSafe.horizontal),
+    flexDirection: "column",
+  },
+  extendedControls: {
     flexDirection: "row",
     alignItems: "center",
+    marginTop: scaledPixels(16),
+    gap: scaledPixels(12),
   },
   controlButton: {
-    marginEnd: scaledPixels(20),
+    marginTop: 0,
+    marginLeft: 0,
   },
 });
 

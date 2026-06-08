@@ -23,5 +23,5 @@ export type RootStackParamList = {
     accessToken?: string;
     userId?: string;
   };
-  Player: { movie: string; headerImage: string; format?: string; itemId?: string };
+  Player: { movie: string; headerImage: string; format?: string; itemId?: string; audioTracks?: { index: number; label: string }[] };
 };

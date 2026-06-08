@@ -28,9 +28,10 @@ const SeekBar = React.memo(({ currentTime, duration }: SeekBarProps) => {
 const seekBarStyles = StyleSheet.create({
   seekbarContainer: {
     flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
     height: scaledPixels(40),
     justifyContent: "center",
-    marginEnd: scaledPixels(80),
   },
   seekbarTrack: {
     width: "100%",

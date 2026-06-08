@@ -114,11 +114,17 @@ const getLibraryItems = async (
   return response.data.Items ?? [];
 };
 
+export interface AudioTrackInfo {
+  index: number;
+  label: string;
+}
+
 const getPlaybackUrl = async (
   token: string,
   userId: string,
   itemId: string,
-): Promise<{ url: string; format: string }> => {
+  audioStreamIndex?: number,
+): Promise<{ url: string; format: string; audioTracks: AudioTrackInfo[] }> => {
   const api = authApi(token);
   const response = await getMediaInfoApi(api).getPostedPlaybackInfo({
     itemId,
@@ -127,6 +133,7 @@ const getPlaybackUrl = async (
     playbackInfoDto: {
       DeviceProfile: FIRE_TV_DEVICE_PROFILE as any,
       UserId: userId,
+      ...(audioStreamIndex !== undefined ? { AudioStreamIndex: audioStreamIndex } : {}),
     },
   });
 
@@ -137,17 +144,26 @@ const getPlaybackUrl = async (
     throw new Error(`No media source available for item ${itemId}`);
   }
 
+  const audioTracks: AudioTrackInfo[] = (mediaSource.MediaStreams ?? [])
+    .filter((s) => s.Type === 'Audio')
+    .map((s) => ({
+      index: s.Index ?? 0,
+      label: s.DisplayTitle ?? s.Language ?? `Track ${s.Index}`,
+    }));
+
   if (mediaSource.TranscodingUrl) {
-    return {
-      url: `${SERVER_URL}${mediaSource.TranscodingUrl}`,
-      format: 'HLS',
-    };
+    const url = new URL(`${SERVER_URL}${mediaSource.TranscodingUrl}`);
+    if (audioStreamIndex !== undefined) {
+      url.searchParams.set('AudioStreamIndex', String(audioStreamIndex));
+    }
+    return { url: url.toString(), format: 'HLS', audioTracks };
   }
 
   const qs = `static=true&api_key=${token}&mediaSourceId=${encodeURIComponent(mediaSource.Id ?? itemId)}${playSessionId ? `&PlaySessionId=${encodeURIComponent(playSessionId)}` : ''}`;
   return {
     url: `${SERVER_URL}/Videos/${itemId}/stream?${qs}`,
     format: 'MP4',
+    audioTracks,
   };
 };
 

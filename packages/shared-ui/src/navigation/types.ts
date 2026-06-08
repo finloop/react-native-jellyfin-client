@@ -20,6 +20,9 @@ export type RootStackParamList = {
     headerImage: string;
     format?: string;
     itemId?: string;
+    audioTracks?: { index: number; label: string }[];
+    accessToken?: string;
+    userId?: string;
   };
 };
 
