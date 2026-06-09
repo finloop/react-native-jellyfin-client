@@ -4,7 +4,11 @@
     "rootDir": "./src",
     "declaration": true,
     "declarationMap": true,
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "paths": {
+      "react": [ "./node_modules/@types/react" ],
+      "react-tv-space-navigation": [ "../../apps/vega/node_modules/react-tv-space-navigation" ]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.tsx"]
