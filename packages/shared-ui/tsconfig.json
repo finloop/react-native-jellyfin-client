@@ -4,7 +4,10 @@
     "rootDir": "./src",
     "declaration": true,
     "declarationMap": true,
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "paths": {
+      "react": [ "./node_modules/@types/react" ]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.tsx"]
