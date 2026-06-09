@@ -176,7 +176,7 @@ export default function VegaHomeScreen() {
                 data={items}
                 orientation="horizontal"
                 renderItem={renderItem}
-                itemSize={scaledPixels(440)}
+                itemSize={scaledPixels(250)}
                 onEndReachedThresholdItemsNumber={3}
               />
             </DefaultFocus>
@@ -251,8 +251,8 @@ const gridStyles = StyleSheet.create({
     textShadowRadius: 8,
   },
   highlightThumbnail: {
-    width: scaledPixels(420),
-    height: scaledPixels(260),
+    width: scaledPixels(220),
+    height: scaledPixels(350),
     marginEnd: scaledPixels(20),
     backgroundColor: colors.card,
     borderRadius: scaledPixels(12),
@@ -273,11 +273,11 @@ const gridStyles = StyleSheet.create({
   highlightsContainer: {
     paddingHorizontal: scaledPixels(safeZones.actionSafe.horizontal),
     paddingVertical: scaledPixels(16),
-    height: scaledPixels(400),
+    height: scaledPixels(450),
   },
   header: {
     width: '100%',
-    height: scaledPixels(700),
+    height: scaledPixels(400),
     position: 'relative',
   },
   headerImage: {
