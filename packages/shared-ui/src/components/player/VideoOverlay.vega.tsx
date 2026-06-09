@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useMemo } from "react";
 import { View, StyleSheet, Animated } from "react-native";
 import FocusablePressable from "../FocusablePressable";
 import SeekBar from "./SeekBar";
+import { SpatialNavigationNode, SpatialNavigationView } from 'react-tv-space-navigation';
 import { AudioTrackPickerButton, AudioTrackPickerModal, AudioTrack } from "./AudioTrackPicker";
 import LoadingIndicator from "../LoadingIndicator";
 import { scaledPixels } from "../../hooks/useScale";
@@ -72,19 +73,19 @@ const VideoOverlay: React.FC<VideoOverlayProps> = React.memo(({
 
       <View style={styles.bottomControls}>
         <SeekBar currentTime={currentTime} duration={duration} />
-        <View style={styles.extendedControls}>
-          {audioTracks.length > 1 && (
-            <AudioTrackPickerButton
-              currentTrack={currentTrack}
-              onOpen={() => onAudioPickerOpenChange(true)}
-            />
-          )}
+        <SpatialNavigationView style={styles.extendedControls} direction="horizontal" >
+          <SpatialNavigationNode>
+              <AudioTrackPickerButton
+                currentTrack={currentTrack}
+                onOpen={() => onAudioPickerOpenChange(true)}
+              />
+          </SpatialNavigationNode>
           <FocusablePressable
             text="Exit"
             onSelect={onExit}
             style={styles.controlButton}
           />
-        </View>
+        </SpatialNavigationView>
       </View>
 
       <AudioTrackPickerModal
