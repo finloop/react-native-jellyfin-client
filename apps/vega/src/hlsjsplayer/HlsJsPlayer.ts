@@ -16,7 +16,7 @@
 import * as HlsPlayerLib from './dist/hls.mjs'
 import { HTMLMediaElement } from "@amazon-devices/react-native-w3cmedia";
 import { PlayerInterface } from '../PlayerInterface.js';
-import {PlayerBase} from "../PlayerBase";
+import {PlayerBase} from "./PlayerBase";
 
 const playerName: string = "hlsjs";
 const playerVersion: string = "1.5.11";

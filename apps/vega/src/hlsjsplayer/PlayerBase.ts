@@ -12,7 +12,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
  */
 
-import {PlayerInterface} from "../PlayerInterface";
+import {PlayerInterface} from "./PlayerInterface";
 import {HTMLMediaElement} from "@amazon-devices/react-native-w3cmedia";
 
 export abstract class PlayerBase implements PlayerInterface {

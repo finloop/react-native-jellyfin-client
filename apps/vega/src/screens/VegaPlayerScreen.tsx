@@ -19,12 +19,12 @@ import VideoOverlay from '@multi-tv/shared-ui/src/components/player/VideoOverlay
 import ExitButton from '@multi-tv/shared-ui/src/components/player/ExitButton';
 import JellyfinClient from '@multi-tv/shared-ui/src/services/JellyfinClient';
 import { RootStackParamList } from '../navigation/types';
-import { HlsJsPlayer } from '../store/hlsjsplayer/HlsJsPlayer';
-import Document from '../store/hlsjsplayer/polyfills/DocumentPolyfill';
-import Element from '../store/hlsjsplayer/polyfills/ElementPolyfill';
-import TextDecoderPolyfill from '../store/hlsjsplayer/polyfills/TextDecoderPolyfill';
-import W3CMediaPolyfill from '../store/hlsjsplayer/polyfills/W3CMediaPolyfill';
-import MiscPolyfill from '../store/hlsjsplayer/polyfills/MiscPolyfill';
+import { HlsJsPlayer } from '../hlsjsplayer/HlsJsPlayer';
+import Document from '../hlsjsplayer/polyfills/DocumentPolyfill';
+import Element from '../hlsjsplayer/polyfills/ElementPolyfill';
+import TextDecoderPolyfill from '../hlsjsplayer/polyfills/TextDecoderPolyfill';
+import W3CMediaPolyfill from '../hlsjsplayer/polyfills/W3CMediaPolyfill';
+import MiscPolyfill from '../hlsjsplayer/polyfills/MiscPolyfill';
 
 type PlayerScreenRouteProp = RouteProp<RootStackParamList, 'Player'>;
 type PlayerScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Player'>;
