@@ -251,9 +251,6 @@ export class HlsJsPlayer extends PlayerBase {
 
     console.log('W3cMediaApp::hlsjsplayer:Loading the hls player with content URL:', content.uri);
 
-    if (content.startPosition !== undefined) {
-      this.player.startPosition = content.startPosition;
-    }
     this.player.loadSource(content.uri);
     this.player.attachMedia(this.mediaElement);
   };

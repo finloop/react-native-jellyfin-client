@@ -1,9 +1,9 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, BackHandler } from 'react-native';
 import { SpatialNavigationRoot } from 'react-tv-space-navigation';
-import { useIsFocused } from '@react-navigation/native';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useIsFocused } from '@amazon-devices/react-navigation__native';
+import { useNavigation, useRoute, RouteProp } from '@amazon-devices/react-navigation__native';
+import { NativeStackNavigationProp } from '@amazon-devices/react-navigation__native-stack';
 import {
   IKeplerAppStateManager,
   useKeplerAppStateManager,
@@ -96,6 +96,17 @@ export default function VegaPlayerScreen() {
     setPaused(true);
   }, []);
 
+  const seek = useCallback((time: number) => {
+    if (videoPlayerRef.current && durationRef.current) {
+      const clamped = Math.max(0, Math.min(time, durationRef.current));
+      videoPlayerRef.current.currentTime = clamped;
+      setCurrentTime(clamped);
+      currentTimeRef.current = clamped;
+      nearEndRef.current = clamped >= durationRef.current - 2;
+      showControls();
+    }
+  }, [showControls]);
+
   const initPlayer = useCallback(async (uri: string, startPosition = 0) => {
     pendingPlaybackRef.current = { uri, startPosition };
 
@@ -167,17 +178,6 @@ export default function VegaPlayerScreen() {
     });
   }, [componentInstance]);
 
-  const seek = useCallback((time: number) => {
-    if (videoPlayerRef.current && durationRef.current) {
-      const clamped = Math.max(0, Math.min(time, durationRef.current));
-      videoPlayerRef.current.currentTime = clamped;
-      setCurrentTime(clamped);
-      currentTimeRef.current = clamped;
-      nearEndRef.current = clamped >= durationRef.current - 2;
-      showControls();
-    }
-  }, [showControls]);
-
   const togglePausePlay = useCallback(() => {
     if (!videoPlayerRef.current || !canPlayFiredRef.current) return;
     if (videoPlayerRef.current.paused) {
@@ -228,11 +228,9 @@ export default function VegaPlayerScreen() {
   useEffect(() => {
     const handleKeyDown = (key: SupportedKeys) => {
       switch (key) {
-        case SupportedKeys.Right:
         case SupportedKeys.FastForward:
           seek(currentTimeRef.current + 10);
           break;
-        case SupportedKeys.Left:
         case SupportedKeys.Rewind:
           seek(currentTimeRef.current - 10);
           break;
@@ -267,8 +265,10 @@ export default function VegaPlayerScreen() {
     if (hlsReadyRef.current && hlsPlayerRef.current) {
       hlsReadyRef.current = false;
       const { uri, startPosition } = pendingPlaybackRef.current;
+      if (startPosition) seek(startPosition);
+      
       hlsPlayerRef.current.load(
-        { uri, secure: 'false', drm_scheme: '', drm_license_uri: '', startPosition },
+        { uri, secure: 'false', drm_scheme: '', drm_license_uri: '' },
         false,
       );
     }
