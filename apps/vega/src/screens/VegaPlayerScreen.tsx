@@ -235,7 +235,11 @@ export default function VegaPlayerScreen() {
           seek(currentTimeRef.current - 10);
           break;
         case SupportedKeys.Back:
-          navigateBack();
+          if (isAudioPickerOpen) {
+            setIsAudioPickerOpen(false);
+          } else {
+            navigateBack();
+          }
           break;
         case SupportedKeys.PlayPause:
           togglePausePlay();
@@ -248,7 +252,8 @@ export default function VegaPlayerScreen() {
 
     const listener = RemoteControlManager.addKeydownListener(handleKeyDown);
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      navigateBack();
+      // We register empty back handler so that the RemoteControlManager
+      // can handle the back key, this also fixes the AudioTrackPicker
       return true;
     });
 
@@ -256,7 +261,7 @@ export default function VegaPlayerScreen() {
       RemoteControlManager.removeKeydownListener(listener);
       backHandler.remove();
     };
-  }, [seek, togglePausePlay, showControls, navigateBack]);
+  }, [seek, togglePausePlay, showControls, navigateBack, isAudioPickerOpen]);
 
   const onSurfaceViewCreated = useCallback((surfaceHandle: string) => {
     surfaceHandleRef.current = surfaceHandle;

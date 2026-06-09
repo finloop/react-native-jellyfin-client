@@ -57,11 +57,11 @@ export const AudioTrackPickerModal = React.memo(({
               {tracks.map((track) => (
                 <SpatialNavigationFocusableView
                   key={track.index}
-                  onSelect={() => { 
+                  onSelect={() => {
                     if (track.index !== selectedIndex) {
-                      onSelect(track.index); 
+                      onSelect(track.index);
                     }
-                    onClose(); 
+                    onClose();
                   }}
                 >
                   {({ isFocused }) => (
