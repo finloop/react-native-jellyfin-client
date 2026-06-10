@@ -14,7 +14,8 @@ import {
 } from '@amazon-devices/react-native-w3cmedia';
 import VideoOverlay from '@multi-tv/shared-ui/src/components/player/VideoOverlay.vega';
 import ExitButton from '@multi-tv/shared-ui/src/components/player/ExitButton';
-import JellyfinClient from '@multi-tv/shared-ui/src/services/JellyfinClient';
+import { BITRATE_OPTIONS } from '@multi-tv/shared-ui/src/components/player/BitratePicker';
+import JellyfinClient, { DEFAULT_MAX_BITRATE } from '@multi-tv/shared-ui/src/services/JellyfinClient';
 import { ticksToSeconds } from '@multi-tv/shared-ui/src/utils/ticks';
 import { RootStackParamList } from '../../navigation/types';
 import { useVideoPlayer } from './useVideoPlayer';
@@ -69,6 +70,11 @@ export default function VegaPlayerScreen() {
   );
   const [isSubtitlePickerOpen, setIsSubtitlePickerOpen] = useState(false);
 
+  // Streaming bitrate. Seeds to the h264 hardware ceiling (the default the initial
+  // resolve uses); selecting a lower value reloads a fresh transcode at that cap.
+  const [selectedBitrate, setSelectedBitrate] = useState(DEFAULT_MAX_BITRATE);
+  const [isBitratePickerOpen, setIsBitratePickerOpen] = useState(false);
+
   const togglePausePlay = useCallback(() => {
     controller.togglePausePlay();
     showControls();
@@ -89,11 +95,11 @@ export default function VegaPlayerScreen() {
     setTimeout(() => navigation.goBack(), 300);
   }, [navigation, controller]);
 
-  // Audio and subtitle both switch by re-resolving a fresh transcode (with the
-  // subtitle burned in) and reloading the player at the current position. Both
-  // indices are always re-sent so changing one never resets the other.
+  // Audio, subtitle and bitrate all switch by re-resolving a fresh transcode (with
+  // the subtitle burned in) and reloading the player at the current position. All
+  // three params are always re-sent so changing one never resets the others.
   const reloadWithStreams = useCallback(
-    async (audioIndex: number, subtitleIndex: number) => {
+    async (audioIndex: number, subtitleIndex: number, maxBitrate: number) => {
       if (!accessToken || !userId || !itemId) return;
 
       const seekTarget = controller.getCurrentTime();
@@ -104,6 +110,7 @@ export default function VegaPlayerScreen() {
           itemId,
           audioIndex,
           subtitleIndex,
+          maxBitrate,
         );
         setPlaySessionId(resolution.playSessionId);
         setMediaSourceId(resolution.mediaSourceId);
@@ -119,17 +126,25 @@ export default function VegaPlayerScreen() {
   const changeAudioTrack = useCallback(
     (newTrackIndex: number) => {
       setSelectedAudioTrackIndex(newTrackIndex);
-      reloadWithStreams(newTrackIndex, selectedSubtitleStreamIndex);
+      reloadWithStreams(newTrackIndex, selectedSubtitleStreamIndex, selectedBitrate);
     },
-    [reloadWithStreams, selectedSubtitleStreamIndex],
+    [reloadWithStreams, selectedSubtitleStreamIndex, selectedBitrate],
   );
 
   const changeSubtitleTrack = useCallback(
     (newIndex: number) => {
       setSelectedSubtitleStreamIndex(newIndex);
-      reloadWithStreams(selectedAudioTrackIndex, newIndex);
+      reloadWithStreams(selectedAudioTrackIndex, newIndex, selectedBitrate);
     },
-    [reloadWithStreams, selectedAudioTrackIndex],
+    [reloadWithStreams, selectedAudioTrackIndex, selectedBitrate],
+  );
+
+  const changeBitrate = useCallback(
+    (newBitrate: number) => {
+      setSelectedBitrate(newBitrate);
+      reloadWithStreams(selectedAudioTrackIndex, selectedSubtitleStreamIndex, newBitrate);
+    },
+    [reloadWithStreams, selectedAudioTrackIndex, selectedSubtitleStreamIndex],
   );
 
   useEffect(() => {
@@ -169,10 +184,11 @@ export default function VegaPlayerScreen() {
     onTogglePausePlay: togglePausePlay,
     onShowControls: showControls,
     onBack: navigateBack,
-    isPickerOpen: isAudioPickerOpen || isSubtitlePickerOpen,
+    isPickerOpen: isAudioPickerOpen || isSubtitlePickerOpen || isBitratePickerOpen,
     onClosePicker: () => {
       setIsAudioPickerOpen(false);
       setIsSubtitlePickerOpen(false);
+      setIsBitratePickerOpen(false);
     },
   });
 
@@ -189,7 +205,7 @@ export default function VegaPlayerScreen() {
   }
 
   return (
-    <SpatialNavigationRoot isActive={isFocused && !isAudioPickerOpen && !isSubtitlePickerOpen}>
+    <SpatialNavigationRoot isActive={isFocused && !isAudioPickerOpen && !isSubtitlePickerOpen && !isBitratePickerOpen}>
       <View style={styles.container}>
         {isPlayerReady && (
           <>
@@ -225,6 +241,11 @@ export default function VegaPlayerScreen() {
             onSubtitleTrackChange={changeSubtitleTrack}
             isSubtitlePickerOpen={isSubtitlePickerOpen}
             onSubtitlePickerOpenChange={setIsSubtitlePickerOpen}
+            bitrateOptions={BITRATE_OPTIONS}
+            selectedBitrate={selectedBitrate}
+            onBitrateChange={changeBitrate}
+            isBitratePickerOpen={isBitratePickerOpen}
+            onBitratePickerOpenChange={setIsBitratePickerOpen}
           />
         )}
       </View>

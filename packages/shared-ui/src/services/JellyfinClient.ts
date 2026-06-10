@@ -63,11 +63,25 @@ const getLibraries = async (token: string, userId: string): Promise<BaseItemDto[
   return response.data.Items ?? [];
 };
 
-const FIRE_TV_DEVICE_PROFILE = {
-  // 8 Mbps: excellent 1080p h264 quality and comfortably inside the Vega decoder's
-  // sustained-realtime ceiling. Uncapped (was 40 Mbps) the server transcoded to
-  // ~39.6 Mbps, which the decoder couldn't sustain on resume — playback micro-stalled.
-  MaxStreamingBitrate: 8000000,
+// Per-codec hardware decode ceilings for Fire TV (Vega), from the device specs.
+// The transcode profile below outputs h264, so 30 Mbps is the effective Max.
+// The old 8 Mbps cap was overly conservative — the ~39.6 Mbps micro-stall was
+// simply exceeding h264's 30 Mbps hardware limit, not a general decoder weakness.
+const CODEC_MAX_BITRATE: Record<string, number> = {
+  h264: 30_000_000,
+  hevc: 35_000_000,
+  av1: 100_000_000,
+  vp9: 30_000_000,
+};
+
+/** Default/highest streaming bitrate: the h264 hardware decode ceiling (30 Mbps). */
+export const DEFAULT_MAX_BITRATE = CODEC_MAX_BITRATE.h264;
+
+// Built per request so the quality picker can re-resolve at a different bitrate.
+// VideoBitrate is the binding cap (Jellyfin transcodes to min(source, this)), so
+// setting it together with MaxStreamingBitrate is how the ceiling actually holds.
+const buildFireTvDeviceProfile = (maxBitrate: number = DEFAULT_MAX_BITRATE) => ({
+  MaxStreamingBitrate: maxBitrate,
   DirectPlayProfiles: [],
   TranscodingProfiles: [
     {
@@ -80,9 +94,7 @@ const FIRE_TV_DEVICE_PROFILE = {
       MaxAudioChannels: '2',
       MinSegments: '1',
       BreakOnNonKeyFrames: true,
-      // Defense-in-depth: keeps the cap binding even if a per-request
-      // maxStreamingBitrate is added later.
-      VideoBitrate: 8000000,
+      VideoBitrate: maxBitrate,
     },
   ],
   ContainerProfiles: [],
@@ -90,7 +102,7 @@ const FIRE_TV_DEVICE_PROFILE = {
   // Empty: the client advertises no subtitle delivery formats, so Jellyfin burns
   // a requested SubtitleStreamIndex into the transcode (Encode/burn-in).
   SubtitleProfiles: [],
-};
+});
 
 const COLLECTION_TYPE_TO_ITEM_KIND: Record<string, string> = {
   movies: 'Movie',
@@ -160,6 +172,7 @@ const getPlaybackUrl = async (
   itemId: string,
   audioStreamIndex?: number,
   subtitleStreamIndex?: number,
+  maxStreamingBitrate?: number,
 ): Promise<PlaybackResolution> => {
   const api = authApi(token);
 
@@ -171,7 +184,7 @@ const getPlaybackUrl = async (
     userId,
     autoOpenLiveStream: true,
     playbackInfoDto: {
-      DeviceProfile: FIRE_TV_DEVICE_PROFILE as any,
+      DeviceProfile: buildFireTvDeviceProfile(maxStreamingBitrate) as any,
       UserId: userId,
       ...(audioStreamIndex !== undefined ? { AudioStreamIndex: audioStreamIndex } : {}),
       ...(subtitleStreamIndex !== undefined ? { SubtitleStreamIndex: subtitleStreamIndex } : {}),

@@ -5,6 +5,7 @@ import SeekBar from "./SeekBar";
 import { SpatialNavigationNode, SpatialNavigationView } from 'react-tv-space-navigation';
 import { AudioTrackPickerButton, AudioTrackPickerModal, AudioTrack } from "./AudioTrackPicker";
 import { SubtitleTrackPickerButton, SubtitleTrackPickerModal, SubtitleTrack } from "./SubtitleTrackPicker";
+import { BitratePickerButton, BitratePickerModal, BitrateOption } from "./BitratePicker";
 import LoadingIndicator from "../LoadingIndicator";
 import { scaledPixels } from "../../hooks/useScale";
 import { safeZones } from "../../theme";
@@ -27,6 +28,11 @@ interface VideoOverlayProps {
   onSubtitleTrackChange?: (index: number) => void;
   isSubtitlePickerOpen: boolean;
   onSubtitlePickerOpenChange: (open: boolean) => void;
+  bitrateOptions?: BitrateOption[];
+  selectedBitrate?: number;
+  onBitrateChange?: (value: number) => void;
+  isBitratePickerOpen?: boolean;
+  onBitratePickerOpenChange?: (open: boolean) => void;
 }
 
 const VideoOverlay: React.FC<VideoOverlayProps> = React.memo(({
@@ -47,6 +53,11 @@ const VideoOverlay: React.FC<VideoOverlayProps> = React.memo(({
   onSubtitleTrackChange,
   isSubtitlePickerOpen,
   onSubtitlePickerOpenChange,
+  bitrateOptions = [],
+  selectedBitrate = 0,
+  onBitrateChange,
+  isBitratePickerOpen = false,
+  onBitratePickerOpenChange = () => {},
 }) => {
   const opacity = useRef(new Animated.Value(0)).current;
 
@@ -58,6 +69,11 @@ const VideoOverlay: React.FC<VideoOverlayProps> = React.memo(({
   const currentSubtitleTrack = useMemo(
     () => subtitleTracks.find((t) => t.index === selectedSubtitleStreamIndex),
     [subtitleTracks, selectedSubtitleStreamIndex],
+  );
+
+  const currentBitrateOption = useMemo(
+    () => bitrateOptions.find((o) => o.value === selectedBitrate),
+    [bitrateOptions, selectedBitrate],
   );
 
   useEffect(() => {
@@ -73,8 +89,9 @@ const VideoOverlay: React.FC<VideoOverlayProps> = React.memo(({
     if (!visible) {
       onAudioPickerOpenChange(false);
       onSubtitlePickerOpenChange(false);
+      onBitratePickerOpenChange(false);
     }
-  }, [visible, onAudioPickerOpenChange, onSubtitlePickerOpenChange]);
+  }, [visible, onAudioPickerOpenChange, onSubtitlePickerOpenChange, onBitratePickerOpenChange]);
 
   if (!visible) {
     return null;
@@ -107,6 +124,14 @@ const VideoOverlay: React.FC<VideoOverlayProps> = React.memo(({
                 />
             </SpatialNavigationNode>
           )}
+          {bitrateOptions.length > 0 && (
+            <SpatialNavigationNode>
+                <BitratePickerButton
+                  currentOption={currentBitrateOption}
+                  onOpen={() => onBitratePickerOpenChange(true)}
+                />
+            </SpatialNavigationNode>
+          )}
         </SpatialNavigationView>
       </View>
 
@@ -124,6 +149,14 @@ const VideoOverlay: React.FC<VideoOverlayProps> = React.memo(({
         selectedIndex={selectedSubtitleStreamIndex}
         onSelect={onSubtitleTrackChange ?? (() => {})}
         onClose={() => onSubtitlePickerOpenChange(false)}
+      />
+
+      <BitratePickerModal
+        visible={isBitratePickerOpen}
+        options={bitrateOptions}
+        selectedValue={selectedBitrate}
+        onSelect={onBitrateChange ?? (() => {})}
+        onClose={() => onBitratePickerOpenChange(false)}
       />
     </Animated.View>
   );
