@@ -66,7 +66,8 @@ export default function DetailsScreen() {
 
     try {
       if (accessToken && userId) {
-        const { url, format, audioTracks } = await JellyfinClient.getPlaybackUrl(accessToken, userId, movie);
+        const { url, format, audioTracks, playSessionId, mediaSourceId, resumePositionTicks, runTimeTicks } =
+          await JellyfinClient.getPlaybackUrl(accessToken, userId, movie);
         navigation.navigate('Player', {
           movie: url,
           headerImage: headerImage,
@@ -75,6 +76,10 @@ export default function DetailsScreen() {
           audioTracks,
           accessToken,
           userId,
+          playSessionId,
+          mediaSourceId,
+          resumePositionTicks,
+          runTimeTicks,
         });
       } else {
         navigation.navigate('Player', {

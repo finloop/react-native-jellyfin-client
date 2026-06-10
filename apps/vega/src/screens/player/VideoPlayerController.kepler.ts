@@ -45,6 +45,7 @@ export class VideoPlayerController {
 
   private hlsReady = false;
   private canPlayFired = false;
+  private resumeApplied = false;
   private nearEnd = false;
   private duration = 0;
   private currentTime = 0;
@@ -69,12 +70,11 @@ export class VideoPlayerController {
     this.pendingPlayback = { uri: initialUri };
   }
 
-  getCurrentTime() {
-    return this.currentTime;
-  }
+  getCurrentTime = () => this.currentTime;
 
   init = async (uri: string, startPosition = 0) => {
     this.pendingPlayback = { uri, startPosition };
+    this.resumeApplied = false;
 
     const vp = new VideoPlayer();
     (global as any).gmedia = vp;
@@ -94,6 +94,14 @@ export class VideoPlayerController {
       this.duration = vp.duration || 0;
       this.callbacks.onDuration(this.duration);
       this.callbacks.onInitialized(true);
+      // Apply the resume position now that duration is known — seeking earlier
+      // (before load) is a no-op because duration is still 0. For Jellyfin HLS
+      // this makes hls.js request segments at the resume offset.
+      const { startPosition } = this.pendingPlayback;
+      if (startPosition && !this.resumeApplied) {
+        this.resumeApplied = true;
+        this.seek(startPosition);
+      }
     });
     vp.addEventListener('timeupdate', () => {
       if (!isActive()) return;
@@ -156,6 +164,7 @@ export class VideoPlayerController {
     this.callbacks.onScrubTime(null);
     this.hlsReady = false;
     this.canPlayFired = false;
+    this.resumeApplied = false;
     this.nearEnd = false;
     if (this.surfaceHandle && this.videoPlayer) {
       this.videoPlayer.clearSurfaceHandle(this.surfaceHandle);
@@ -258,9 +267,8 @@ export class VideoPlayerController {
 
     if (this.hlsReady && this.hlsPlayer) {
       this.hlsReady = false;
-      const { uri, startPosition } = this.pendingPlayback;
-      if (startPosition) this.seek(startPosition);
-
+      const { uri } = this.pendingPlayback;
+      // Resume seek is applied on 'loadedmetadata' (once duration is known), not here.
       this.hlsPlayer.load(
         { uri, secure: 'false', drm_scheme: '', drm_license_uri: '' },
         false,

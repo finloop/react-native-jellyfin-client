@@ -3,9 +3,11 @@ import type { BaseItemDto } from '@jellyfin/sdk/lib/generated-client/models';
 import { ItemFields } from '@jellyfin/sdk/lib/generated-client/models';
 import { getItemsApi } from '@jellyfin/sdk/lib/utils/api/items-api';
 import { getMediaInfoApi } from '@jellyfin/sdk/lib/utils/api/media-info-api';
+import { getPlaystateApi } from '@jellyfin/sdk/lib/utils/api/playstate-api';
+import { getUserLibraryApi } from '@jellyfin/sdk/lib/utils/api/user-library-api';
 import { getUserViewsApi } from '@jellyfin/sdk/lib/utils/api/user-views-api';
 
-export const SERVER_URL = 'http://192.168.1.13:8096';
+export const SERVER_URL = 'https://video.piotrk.it';
 
 const jellyfin = new Jellyfin({
   clientInfo: { name: 'MultiTV Vega', version: '1.0.0' },
@@ -119,13 +121,31 @@ export interface AudioTrackInfo {
   label: string;
 }
 
+export interface PlaybackResolution {
+  url: string;
+  format: string;
+  audioTracks: AudioTrackInfo[];
+  /** Session identifiers from /PlaybackInfo — reused for every playback report. */
+  playSessionId?: string;
+  mediaSourceId?: string;
+  /** Total runtime, in Jellyfin ticks (100ns units). */
+  runTimeTicks?: number;
+  /** Saved resume position from UserData, in ticks. 0 when not resumable. */
+  resumePositionTicks: number;
+}
+
 const getPlaybackUrl = async (
   token: string,
   userId: string,
   itemId: string,
   audioStreamIndex?: number,
-): Promise<{ url: string; format: string; audioTracks: AudioTrackInfo[] }> => {
+): Promise<PlaybackResolution> => {
   const api = authApi(token);
+
+  // Resume position lives on the item's UserData, not in the PlaybackInfo response.
+  const itemResponse = await getUserLibraryApi(api).getItem({ userId, itemId });
+  const resumePositionTicks = itemResponse.data.UserData?.PlaybackPositionTicks ?? 0;
+
   const response = await getMediaInfoApi(api).getPostedPlaybackInfo({
     itemId,
     userId,
@@ -138,11 +158,14 @@ const getPlaybackUrl = async (
   });
 
   const mediaSource = response.data.MediaSources?.[0];
-  const playSessionId = response.data.PlaySessionId;
+  const playSessionId = response.data.PlaySessionId ?? undefined;
 
   if (!mediaSource) {
     throw new Error(`No media source available for item ${itemId}`);
   }
+
+  const mediaSourceId = mediaSource.Id ?? itemId;
+  const runTimeTicks = mediaSource.RunTimeTicks ?? undefined;
 
   const audioTracks: AudioTrackInfo[] = (mediaSource.MediaStreams ?? [])
     .filter((s) => s.Type === 'Audio')
@@ -151,20 +174,85 @@ const getPlaybackUrl = async (
       label: s.DisplayTitle ?? s.Language ?? `Track ${s.Index}`,
     }));
 
+  const session = { playSessionId, mediaSourceId, runTimeTicks, resumePositionTicks };
+
   if (mediaSource.TranscodingUrl) {
     const url = new URL(`${SERVER_URL}${mediaSource.TranscodingUrl}`);
     if (audioStreamIndex !== undefined) {
       url.searchParams.set('AudioStreamIndex', String(audioStreamIndex));
     }
-    return { url: url.toString(), format: 'HLS', audioTracks };
+    return { url: url.toString(), format: 'HLS', audioTracks, ...session };
   }
 
-  const qs = `static=true&api_key=${token}&mediaSourceId=${encodeURIComponent(mediaSource.Id ?? itemId)}${playSessionId ? `&PlaySessionId=${encodeURIComponent(playSessionId)}` : ''}`;
+  const qs = `static=true&api_key=${token}&mediaSourceId=${encodeURIComponent(mediaSourceId)}${playSessionId ? `&PlaySessionId=${encodeURIComponent(playSessionId)}` : ''}`;
   return {
     url: `${SERVER_URL}/Videos/${itemId}/stream?${qs}`,
     format: 'MP4',
     audioTracks,
+    ...session,
   };
+};
+
+export interface PlaybackReport {
+  token: string;
+  itemId: string;
+  playSessionId?: string;
+  mediaSourceId?: string;
+  positionTicks: number;
+  audioStreamIndex?: number;
+  isPaused?: boolean;
+}
+
+// Transcode-only device profile (see FIRE_TV_DEVICE_PROFILE), so always Transcode.
+const PLAY_METHOD = 'Transcode' as const;
+
+const reportPlaybackStart = async (report: PlaybackReport): Promise<void> => {
+  const api = authApi(report.token);
+  await getPlaystateApi(api).reportPlaybackStart({
+    playbackStartInfo: {
+      ItemId: report.itemId,
+      MediaSourceId: report.mediaSourceId,
+      PlaySessionId: report.playSessionId,
+      PositionTicks: report.positionTicks,
+      AudioStreamIndex: report.audioStreamIndex,
+      PlayMethod: PLAY_METHOD,
+      CanSeek: true,
+      IsPaused: false,
+    },
+  });
+};
+
+const reportPlaybackProgress = async (report: PlaybackReport): Promise<void> => {
+  const api = authApi(report.token);
+  await getPlaystateApi(api).reportPlaybackProgress({
+    playbackProgressInfo: {
+      ItemId: report.itemId,
+      MediaSourceId: report.mediaSourceId,
+      PlaySessionId: report.playSessionId,
+      PositionTicks: report.positionTicks,
+      AudioStreamIndex: report.audioStreamIndex,
+      PlayMethod: PLAY_METHOD,
+      CanSeek: true,
+      IsPaused: report.isPaused ?? false,
+    },
+  });
+};
+
+const reportPlaybackStopped = async (report: PlaybackReport): Promise<void> => {
+  const api = authApi(report.token);
+  await getPlaystateApi(api).reportPlaybackStopped({
+    playbackStopInfo: {
+      ItemId: report.itemId,
+      MediaSourceId: report.mediaSourceId,
+      PlaySessionId: report.playSessionId,
+      PositionTicks: report.positionTicks,
+    },
+  });
+};
+
+const markPlayed = async (token: string, userId: string, itemId: string): Promise<void> => {
+  const api = authApi(token);
+  await getPlaystateApi(api).markPlayedItem({ userId, itemId });
 };
 
 const getItemImageUrl = (itemId: string): string =>
@@ -178,6 +266,10 @@ export default {
   getLibraries,
   getLibraryItems,
   getPlaybackUrl,
+  reportPlaybackStart,
+  reportPlaybackProgress,
+  reportPlaybackStopped,
+  markPlayed,
   getItemImageUrl,
   COLLECTION_TYPE_TO_ITEM_KIND,
 };

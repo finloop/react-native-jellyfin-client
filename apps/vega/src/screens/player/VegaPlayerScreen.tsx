@@ -15,10 +15,12 @@ import {
 import VideoOverlay from '@multi-tv/shared-ui/src/components/player/VideoOverlay.vega';
 import ExitButton from '@multi-tv/shared-ui/src/components/player/ExitButton';
 import JellyfinClient from '@multi-tv/shared-ui/src/services/JellyfinClient';
+import { ticksToSeconds } from '@multi-tv/shared-ui/src/utils/ticks';
 import { RootStackParamList } from '../../navigation/types';
 import { useVideoPlayer } from './useVideoPlayer';
 import { useControlsVisibility } from './useControlsVisibility';
 import { usePlayerRemoteControl } from './usePlayerRemoteControl';
+import { usePlaybackReporting } from './usePlaybackReporting';
 
 type PlayerScreenRouteProp = RouteProp<RootStackParamList, 'Player'>;
 type PlayerScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Player'>;
@@ -26,8 +28,15 @@ type PlayerScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 
 export default function VegaPlayerScreen() {
   const route = useRoute<PlayerScreenRouteProp>();
   const navigation = useNavigation<PlayerScreenNavigationProp>();
-  const { movie, audioTracks = [], itemId, accessToken, userId } = route.params;
+  const { movie, audioTracks = [], itemId, accessToken, userId, resumePositionTicks, runTimeTicks } =
+    route.params;
   const isFocused = useIsFocused();
+
+  // Session identifiers are stateful: an audio-track switch re-resolves a fresh
+  // PlaySessionId/MediaSourceId that the reporting hook needs to pick up.
+  const [playSessionId, setPlaySessionId] = useState(route.params.playSessionId);
+  const [mediaSourceId, setMediaSourceId] = useState(route.params.mediaSourceId);
+  const resumeSeconds = ticksToSeconds(resumePositionTicks ?? 0);
 
   const keplerAppStateManager: IKeplerAppStateManager = useKeplerAppStateManager();
   const componentInstance = keplerAppStateManager.getComponentInstance();
@@ -80,9 +89,11 @@ export default function VegaPlayerScreen() {
       setSelectedAudioTrackIndex(newTrackIndex);
 
       try {
-        const { url } = await JellyfinClient.getPlaybackUrl(accessToken, userId, itemId, newTrackIndex);
+        const resolution = await JellyfinClient.getPlaybackUrl(accessToken, userId, itemId, newTrackIndex);
+        setPlaySessionId(resolution.playSessionId);
+        setMediaSourceId(resolution.mediaSourceId);
         controller.destroy();
-        await controller.init(url, seekTarget);
+        await controller.init(resolution.url, seekTarget);
       } catch (e) {
         console.error('[VegaPlayerScreen] Failed to change audio track', e);
       }
@@ -92,10 +103,25 @@ export default function VegaPlayerScreen() {
 
   useEffect(() => {
     if (!isFocused) return;
-    controller.init(movie);
+    controller.init(movie, resumeSeconds);
     return controller.destroy;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [movie, isFocused]);
+
+  usePlaybackReporting({
+    itemId,
+    accessToken,
+    userId,
+    playSessionId,
+    mediaSourceId,
+    audioStreamIndex: selectedAudioTrackIndex,
+    runTimeTicks,
+    paused,
+    duration,
+    isVideoInitialized,
+    isVideoEnded,
+    getCurrentTime: controller.getCurrentTime,
+  });
 
   useEffect(() => {
     if (isVideoEnded) navigateBack();
