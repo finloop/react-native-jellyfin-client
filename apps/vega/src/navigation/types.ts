@@ -23,5 +23,5 @@ export type RootStackParamList = {
     accessToken?: string;
     userId?: string;
   };
-  Player: { movie: string; headerImage: string; format?: string; itemId?: string; audioTracks?: { index: number; label: string }[]; accessToken?: string; userId?: string; playSessionId?: string; mediaSourceId?: string; resumePositionTicks?: number; runTimeTicks?: number };
+  Player: { movie: string; headerImage: string; format?: string; itemId?: string; audioTracks?: { index: number; label: string }[]; subtitleTracks?: { index: number; label: string }[]; audioStreamIndex?: number; subtitleStreamIndex?: number; accessToken?: string; userId?: string; playSessionId?: string; mediaSourceId?: string; resumePositionTicks?: number; runTimeTicks?: number };
 };

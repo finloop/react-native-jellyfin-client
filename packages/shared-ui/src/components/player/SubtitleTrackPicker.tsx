@@ -4,46 +4,46 @@ import { SpatialNavigationFocusableView, DefaultFocus, SpatialNavigationRoot, Sp
 import { scaledPixels } from "../../hooks/useScale";
 import { colors } from "../../theme/colors";
 
-export interface AudioTrack {
+export interface SubtitleTrack {
   index: number;
   label: string;
 }
 
-interface AudioTrackPickerButtonProps {
-  currentTrack: AudioTrack | undefined;
+interface SubtitleTrackPickerButtonProps {
+  currentTrack: SubtitleTrack | undefined;
   onOpen: () => void;
 }
 
-interface AudioTrackPickerModalProps {
+interface SubtitleTrackPickerModalProps {
   visible: boolean;
-  tracks: AudioTrack[];
+  tracks: SubtitleTrack[];
   selectedIndex: number;
   onSelect: (index: number) => void;
   onClose: () => void;
 }
 
-export const AudioTrackPickerButton = React.memo(({ currentTrack, onOpen }: AudioTrackPickerButtonProps) => (
+export const SubtitleTrackPickerButton = React.memo(({ currentTrack, onOpen }: SubtitleTrackPickerButtonProps) => (
   <SpatialNavigationFocusableView onSelect={onOpen}>
     {({ isFocused }) => (
       <View style={[styles.triggerButton, isFocused && styles.triggerButtonFocused]}>
         <Text style={[styles.triggerLabel, isFocused && styles.triggerLabelFocused]}>
-          Audio
+          Subtitles
         </Text>
         <Text style={[styles.triggerValue, isFocused && styles.triggerValueFocused]} numberOfLines={1}>
-          {currentTrack?.label ?? '—'}
+          {currentTrack?.label ?? 'Off'}
         </Text>
       </View>
     )}
   </SpatialNavigationFocusableView>
 ));
 
-export const AudioTrackPickerModal = React.memo(({
+export const SubtitleTrackPickerModal = React.memo(({
   visible,
   tracks,
   selectedIndex,
   onSelect,
   onClose,
-}: AudioTrackPickerModalProps) => {
+}: SubtitleTrackPickerModalProps) => {
   if (!visible) return null;
 
   return (
@@ -51,7 +51,7 @@ export const AudioTrackPickerModal = React.memo(({
       <View style={styles.backdrop} />
       <SpatialNavigationRoot isActive={visible}>
         <View style={styles.panel}>
-          <Text style={styles.panelTitle}>Audio Track</Text>
+          <Text style={styles.panelTitle}>Subtitles</Text>
           <SpatialNavigationScrollView style={styles.scrollView}>
             <DefaultFocus>
               <View style={styles.trackList}>
@@ -146,7 +146,7 @@ const styles = StyleSheet.create({
     minWidth: scaledPixels(400),
     maxWidth: scaledPixels(700),
   },
-  // Cap the list height so long track lists scroll instead of overflowing the
+  // Cap the list height so long subtitle lists scroll instead of overflowing the
   // screen; SpatialNavigationScrollView keeps the focused row in view.
   scrollView: {
     maxHeight: scaledPixels(600),

@@ -45,7 +45,6 @@ export class VideoPlayerController {
 
   private hlsReady = false;
   private canPlayFired = false;
-  private resumeApplied = false;
   private nearEnd = false;
   private duration = 0;
   private currentTime = 0;
@@ -74,7 +73,6 @@ export class VideoPlayerController {
 
   init = async (uri: string, startPosition = 0) => {
     this.pendingPlayback = { uri, startPosition };
-    this.resumeApplied = false;
 
     const vp = new VideoPlayer();
     (global as any).gmedia = vp;
@@ -94,14 +92,10 @@ export class VideoPlayerController {
       this.duration = vp.duration || 0;
       this.callbacks.onDuration(this.duration);
       this.callbacks.onInitialized(true);
-      // Apply the resume position now that duration is known — seeking earlier
-      // (before load) is a no-op because duration is still 0. For Jellyfin HLS
-      // this makes hls.js request segments at the resume offset.
-      const { startPosition } = this.pendingPlayback;
-      if (startPosition && !this.resumeApplied) {
-        this.resumeApplied = true;
-        this.seek(startPosition);
-      }
+      // No resume seek: hls.js loads at the offset (config.startPosition), so
+      // currentTime already starts at the resume/reload position. A client seek
+      // after a frag-0 load primes the decoder at PTS~0 and then stalls in a
+      // buffer-hole-nudge loop trying to cross the jump to a deep offset.
     });
     vp.addEventListener('timeupdate', () => {
       if (!isActive()) return;
@@ -123,6 +117,10 @@ export class VideoPlayerController {
     vp.addEventListener('playing', () => {
       if (!isActive()) return;
       this.callbacks.onBuffering(false);
+      // No resume seek here: hls.js starts loading at the resume/reload offset
+      // (config.startPosition, set in attachSurface), so the decoder primes at the
+      // target. A client seek after a frag-0 load primes at PTS~0 and then stalls
+      // trying to cross the jump to a deep offset.
     });
 
     try {
@@ -164,7 +162,6 @@ export class VideoPlayerController {
     this.callbacks.onScrubTime(null);
     this.hlsReady = false;
     this.canPlayFired = false;
-    this.resumeApplied = false;
     this.nearEnd = false;
     if (this.surfaceHandle && this.videoPlayer) {
       this.videoPlayer.clearSurfaceHandle(this.surfaceHandle);
@@ -267,10 +264,17 @@ export class VideoPlayerController {
 
     if (this.hlsReady && this.hlsPlayer) {
       this.hlsReady = false;
-      const { uri } = this.pendingPlayback;
-      // Resume seek is applied on 'loadedmetadata' (once duration is known), not here.
+      const { uri, startPosition } = this.pendingPlayback;
+      // Resume/reload offset is handled by hls.js (config.startPosition) so it loads
+      // the fragment at the offset first — no frag-0 fetch, no post-load client seek.
       this.hlsPlayer.load(
-        { uri, secure: 'false', drm_scheme: '', drm_license_uri: '' },
+        {
+          uri,
+          secure: 'false',
+          drm_scheme: '',
+          drm_license_uri: '',
+          startPosition: startPosition ?? -1,
+        },
         false,
       );
     }

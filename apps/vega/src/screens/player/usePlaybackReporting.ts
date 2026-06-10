@@ -12,6 +12,7 @@ export interface PlaybackReportingArgs {
   playSessionId?: string;
   mediaSourceId?: string;
   audioStreamIndex?: number;
+  subtitleStreamIndex?: number;
   runTimeTicks?: number;
   paused: boolean;
   duration: number; // seconds, from the player (fallback runtime)
@@ -53,6 +54,7 @@ export function usePlaybackReporting(args: PlaybackReportingArgs) {
       playSessionId: c.playSessionId,
       mediaSourceId: c.mediaSourceId,
       audioStreamIndex: c.audioStreamIndex,
+      subtitleStreamIndex: c.subtitleStreamIndex,
       positionTicks: secondsToTicks(positionSeconds),
       isPaused: c.paused,
     };

@@ -64,7 +64,10 @@ const getLibraries = async (token: string, userId: string): Promise<BaseItemDto[
 };
 
 const FIRE_TV_DEVICE_PROFILE = {
-  MaxStreamingBitrate: 40000000,
+  // 8 Mbps: excellent 1080p h264 quality and comfortably inside the Vega decoder's
+  // sustained-realtime ceiling. Uncapped (was 40 Mbps) the server transcoded to
+  // ~39.6 Mbps, which the decoder couldn't sustain on resume — playback micro-stalled.
+  MaxStreamingBitrate: 8000000,
   DirectPlayProfiles: [],
   TranscodingProfiles: [
     {
@@ -77,10 +80,15 @@ const FIRE_TV_DEVICE_PROFILE = {
       MaxAudioChannels: '2',
       MinSegments: '1',
       BreakOnNonKeyFrames: true,
+      // Defense-in-depth: keeps the cap binding even if a per-request
+      // maxStreamingBitrate is added later.
+      VideoBitrate: 8000000,
     },
   ],
   ContainerProfiles: [],
   CodecProfiles: [],
+  // Empty: the client advertises no subtitle delivery formats, so Jellyfin burns
+  // a requested SubtitleStreamIndex into the transcode (Encode/burn-in).
   SubtitleProfiles: [],
 };
 
@@ -121,10 +129,22 @@ export interface AudioTrackInfo {
   label: string;
 }
 
+export interface SubtitleTrackInfo {
+  /** Jellyfin subtitle stream index; -1 is the synthetic "Off" entry. */
+  index: number;
+  label: string;
+}
+
 export interface PlaybackResolution {
   url: string;
   format: string;
   audioTracks: AudioTrackInfo[];
+  /** Selectable subtitle streams (plus an "Off" entry), burned in on selection. */
+  subtitleTracks: SubtitleTrackInfo[];
+  /** Stream indices Jellyfin actually selected for this resolution — used to seed
+   * the player UI so it matches what's really playing (-1 subtitle = none). */
+  audioStreamIndex: number;
+  subtitleStreamIndex: number;
   /** Session identifiers from /PlaybackInfo — reused for every playback report. */
   playSessionId?: string;
   mediaSourceId?: string;
@@ -139,10 +159,10 @@ const getPlaybackUrl = async (
   userId: string,
   itemId: string,
   audioStreamIndex?: number,
+  subtitleStreamIndex?: number,
 ): Promise<PlaybackResolution> => {
   const api = authApi(token);
 
-  // Resume position lives on the item's UserData, not in the PlaybackInfo response.
   const itemResponse = await getUserLibraryApi(api).getItem({ userId, itemId });
   const resumePositionTicks = itemResponse.data.UserData?.PlaybackPositionTicks ?? 0;
 
@@ -154,6 +174,7 @@ const getPlaybackUrl = async (
       DeviceProfile: FIRE_TV_DEVICE_PROFILE as any,
       UserId: userId,
       ...(audioStreamIndex !== undefined ? { AudioStreamIndex: audioStreamIndex } : {}),
+      ...(subtitleStreamIndex !== undefined ? { SubtitleStreamIndex: subtitleStreamIndex } : {}),
     },
   });
 
@@ -174,14 +195,44 @@ const getPlaybackUrl = async (
       label: s.DisplayTitle ?? s.Language ?? `Track ${s.Index}`,
     }));
 
-  const session = { playSessionId, mediaSourceId, runTimeTicks, resumePositionTicks };
+  // All subtitle streams (burn-in handles image-based subs too), plus a synthetic
+  // "Off" entry. Selecting one re-resolves with its index so Jellyfin encodes it.
+  const subtitleTracks: SubtitleTrackInfo[] = [
+    { index: -1, label: 'Off' },
+    ...(mediaSource.MediaStreams ?? [])
+      .filter((s) => s.Type === 'Subtitle')
+      .map((s) => ({
+        index: s.Index ?? 0,
+        label: s.DisplayTitle ?? s.Language ?? `Subtitle ${s.Index}`,
+      })),
+  ];
+
+  const session = { playSessionId, mediaSourceId, runTimeTicks, resumePositionTicks, subtitleTracks };
+
+  const fallbackAudioIndex = mediaSource.DefaultAudioStreamIndex ?? audioTracks[0]?.index ?? 0;
 
   if (mediaSource.TranscodingUrl) {
     const url = new URL(`${SERVER_URL}${mediaSource.TranscodingUrl}`);
+    // Jellyfin ignores these in the PlaybackInfo body for live sessions, so they
+    // must be overridden on the TranscodingUrl query string. -1 = no subtitle.
     if (audioStreamIndex !== undefined) {
       url.searchParams.set('AudioStreamIndex', String(audioStreamIndex));
     }
-    return { url: url.toString(), format: 'HLS', audioTracks, ...session };
+    if (subtitleStreamIndex !== undefined) {
+      url.searchParams.set('SubtitleStreamIndex', String(subtitleStreamIndex));
+    }
+    // Read back what Jellyfin actually selected (on the first resolve it picks
+    // defaults/forced streams itself) so the UI reflects what's really playing.
+    const activeAudio = url.searchParams.get('AudioStreamIndex');
+    const activeSubtitle = url.searchParams.get('SubtitleStreamIndex');
+    return {
+      url: url.toString(),
+      format: 'HLS',
+      audioTracks,
+      audioStreamIndex: activeAudio !== null ? Number(activeAudio) : fallbackAudioIndex,
+      subtitleStreamIndex: activeSubtitle !== null ? Number(activeSubtitle) : -1,
+      ...session,
+    };
   }
 
   const qs = `static=true&api_key=${token}&mediaSourceId=${encodeURIComponent(mediaSourceId)}${playSessionId ? `&PlaySessionId=${encodeURIComponent(playSessionId)}` : ''}`;
@@ -189,6 +240,8 @@ const getPlaybackUrl = async (
     url: `${SERVER_URL}/Videos/${itemId}/stream?${qs}`,
     format: 'MP4',
     audioTracks,
+    audioStreamIndex: audioStreamIndex ?? fallbackAudioIndex,
+    subtitleStreamIndex: subtitleStreamIndex ?? -1,
     ...session,
   };
 };
@@ -200,6 +253,7 @@ export interface PlaybackReport {
   mediaSourceId?: string;
   positionTicks: number;
   audioStreamIndex?: number;
+  subtitleStreamIndex?: number;
   isPaused?: boolean;
 }
 
@@ -215,6 +269,7 @@ const reportPlaybackStart = async (report: PlaybackReport): Promise<void> => {
       PlaySessionId: report.playSessionId,
       PositionTicks: report.positionTicks,
       AudioStreamIndex: report.audioStreamIndex,
+      SubtitleStreamIndex: report.subtitleStreamIndex,
       PlayMethod: PLAY_METHOD,
       CanSeek: true,
       IsPaused: false,
@@ -231,6 +286,7 @@ const reportPlaybackProgress = async (report: PlaybackReport): Promise<void> => 
       PlaySessionId: report.playSessionId,
       PositionTicks: report.positionTicks,
       AudioStreamIndex: report.audioStreamIndex,
+      SubtitleStreamIndex: report.subtitleStreamIndex,
       PlayMethod: PLAY_METHOD,
       CanSeek: true,
       IsPaused: report.isPaused ?? false,

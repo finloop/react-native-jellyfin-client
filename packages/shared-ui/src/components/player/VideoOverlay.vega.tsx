@@ -4,6 +4,7 @@ import FocusablePressable from "../FocusablePressable";
 import SeekBar from "./SeekBar";
 import { SpatialNavigationNode, SpatialNavigationView } from 'react-tv-space-navigation';
 import { AudioTrackPickerButton, AudioTrackPickerModal, AudioTrack } from "./AudioTrackPicker";
+import { SubtitleTrackPickerButton, SubtitleTrackPickerModal, SubtitleTrack } from "./SubtitleTrackPicker";
 import LoadingIndicator from "../LoadingIndicator";
 import { scaledPixels } from "../../hooks/useScale";
 import { safeZones } from "../../theme";
@@ -21,6 +22,11 @@ interface VideoOverlayProps {
   onAudioTrackChange?: (index: number) => void;
   isAudioPickerOpen: boolean;
   onAudioPickerOpenChange: (open: boolean) => void;
+  subtitleTracks?: SubtitleTrack[];
+  selectedSubtitleStreamIndex?: number;
+  onSubtitleTrackChange?: (index: number) => void;
+  isSubtitlePickerOpen: boolean;
+  onSubtitlePickerOpenChange: (open: boolean) => void;
 }
 
 const VideoOverlay: React.FC<VideoOverlayProps> = React.memo(({
@@ -36,12 +42,22 @@ const VideoOverlay: React.FC<VideoOverlayProps> = React.memo(({
   onAudioTrackChange,
   isAudioPickerOpen,
   onAudioPickerOpenChange,
+  subtitleTracks = [],
+  selectedSubtitleStreamIndex = -1,
+  onSubtitleTrackChange,
+  isSubtitlePickerOpen,
+  onSubtitlePickerOpenChange,
 }) => {
   const opacity = useRef(new Animated.Value(0)).current;
 
   const currentTrack = useMemo(
     () => audioTracks.find((t) => t.index === selectedAudioTrackIndex),
     [audioTracks, selectedAudioTrackIndex],
+  );
+
+  const currentSubtitleTrack = useMemo(
+    () => subtitleTracks.find((t) => t.index === selectedSubtitleStreamIndex),
+    [subtitleTracks, selectedSubtitleStreamIndex],
   );
 
   useEffect(() => {
@@ -52,10 +68,13 @@ const VideoOverlay: React.FC<VideoOverlayProps> = React.memo(({
     }).start();
   }, [visible, opacity]);
 
-  // Close audio picker when overlay hides
+  // Close pickers when overlay hides
   useEffect(() => {
-    if (!visible) onAudioPickerOpenChange(false);
-  }, [visible, onAudioPickerOpenChange]);
+    if (!visible) {
+      onAudioPickerOpenChange(false);
+      onSubtitlePickerOpenChange(false);
+    }
+  }, [visible, onAudioPickerOpenChange, onSubtitlePickerOpenChange]);
 
   if (!visible) {
     return null;
@@ -80,6 +99,14 @@ const VideoOverlay: React.FC<VideoOverlayProps> = React.memo(({
                 onOpen={() => onAudioPickerOpenChange(true)}
               />
           </SpatialNavigationNode>
+          {subtitleTracks.length > 0 && (
+            <SpatialNavigationNode>
+                <SubtitleTrackPickerButton
+                  currentTrack={currentSubtitleTrack}
+                  onOpen={() => onSubtitlePickerOpenChange(true)}
+                />
+            </SpatialNavigationNode>
+          )}
         </SpatialNavigationView>
       </View>
 
@@ -89,6 +116,14 @@ const VideoOverlay: React.FC<VideoOverlayProps> = React.memo(({
         selectedIndex={selectedAudioTrackIndex}
         onSelect={onAudioTrackChange ?? (() => {})}
         onClose={() => onAudioPickerOpenChange(false)}
+      />
+
+      <SubtitleTrackPickerModal
+        visible={isSubtitlePickerOpen}
+        tracks={subtitleTracks}
+        selectedIndex={selectedSubtitleStreamIndex}
+        onSelect={onSubtitleTrackChange ?? (() => {})}
+        onClose={() => onSubtitlePickerOpenChange(false)}
       />
     </Animated.View>
   );

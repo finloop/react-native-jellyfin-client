@@ -28,7 +28,7 @@ type PlayerScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 
 export default function VegaPlayerScreen() {
   const route = useRoute<PlayerScreenRouteProp>();
   const navigation = useNavigation<PlayerScreenNavigationProp>();
-  const { movie, audioTracks = [], itemId, accessToken, userId, resumePositionTicks, runTimeTicks } =
+  const { movie, audioTracks = [], subtitleTracks = [], itemId, accessToken, userId, resumePositionTicks, runTimeTicks } =
     route.params;
   const isFocused = useIsFocused();
 
@@ -56,10 +56,18 @@ export default function VegaPlayerScreen() {
 
   const { controlsVisible, showControls } = useControlsVisibility();
 
+  // Seed from the indices Jellyfin actually resolved (it may pick a default audio
+  // track or a forced/default subtitle), so the pickers match what's playing.
   const [selectedAudioTrackIndex, setSelectedAudioTrackIndex] = useState(
-    audioTracks.find((t) => t)?.index ?? 0,
+    route.params.audioStreamIndex ?? audioTracks.find((t) => t)?.index ?? 0,
   );
   const [isAudioPickerOpen, setIsAudioPickerOpen] = useState(false);
+
+  // -1 = subtitles off. Selecting a subtitle reloads with it burned in.
+  const [selectedSubtitleStreamIndex, setSelectedSubtitleStreamIndex] = useState(
+    route.params.subtitleStreamIndex ?? -1,
+  );
+  const [isSubtitlePickerOpen, setIsSubtitlePickerOpen] = useState(false);
 
   const togglePausePlay = useCallback(() => {
     controller.togglePausePlay();
@@ -81,24 +89,47 @@ export default function VegaPlayerScreen() {
     setTimeout(() => navigation.goBack(), 300);
   }, [navigation, controller]);
 
-  const changeAudioTrack = useCallback(
-    async (newTrackIndex: number) => {
+  // Audio and subtitle both switch by re-resolving a fresh transcode (with the
+  // subtitle burned in) and reloading the player at the current position. Both
+  // indices are always re-sent so changing one never resets the other.
+  const reloadWithStreams = useCallback(
+    async (audioIndex: number, subtitleIndex: number) => {
       if (!accessToken || !userId || !itemId) return;
 
       const seekTarget = controller.getCurrentTime();
-      setSelectedAudioTrackIndex(newTrackIndex);
-
       try {
-        const resolution = await JellyfinClient.getPlaybackUrl(accessToken, userId, itemId, newTrackIndex);
+        const resolution = await JellyfinClient.getPlaybackUrl(
+          accessToken,
+          userId,
+          itemId,
+          audioIndex,
+          subtitleIndex,
+        );
         setPlaySessionId(resolution.playSessionId);
         setMediaSourceId(resolution.mediaSourceId);
         controller.destroy();
         await controller.init(resolution.url, seekTarget);
       } catch (e) {
-        console.error('[VegaPlayerScreen] Failed to change audio track', e);
+        console.error('[VegaPlayerScreen] Failed to reload streams', e);
       }
     },
     [accessToken, userId, itemId, controller],
+  );
+
+  const changeAudioTrack = useCallback(
+    (newTrackIndex: number) => {
+      setSelectedAudioTrackIndex(newTrackIndex);
+      reloadWithStreams(newTrackIndex, selectedSubtitleStreamIndex);
+    },
+    [reloadWithStreams, selectedSubtitleStreamIndex],
+  );
+
+  const changeSubtitleTrack = useCallback(
+    (newIndex: number) => {
+      setSelectedSubtitleStreamIndex(newIndex);
+      reloadWithStreams(selectedAudioTrackIndex, newIndex);
+    },
+    [reloadWithStreams, selectedAudioTrackIndex],
   );
 
   useEffect(() => {
@@ -115,6 +146,7 @@ export default function VegaPlayerScreen() {
     playSessionId,
     mediaSourceId,
     audioStreamIndex: selectedAudioTrackIndex,
+    subtitleStreamIndex: selectedSubtitleStreamIndex,
     runTimeTicks,
     paused,
     duration,
@@ -137,8 +169,11 @@ export default function VegaPlayerScreen() {
     onTogglePausePlay: togglePausePlay,
     onShowControls: showControls,
     onBack: navigateBack,
-    isAudioPickerOpen,
-    onCloseAudioPicker: () => setIsAudioPickerOpen(false),
+    isPickerOpen: isAudioPickerOpen || isSubtitlePickerOpen,
+    onClosePicker: () => {
+      setIsAudioPickerOpen(false);
+      setIsSubtitlePickerOpen(false);
+    },
   });
 
   if (isVideoError) {
@@ -154,7 +189,7 @@ export default function VegaPlayerScreen() {
   }
 
   return (
-    <SpatialNavigationRoot isActive={isFocused && !isAudioPickerOpen}>
+    <SpatialNavigationRoot isActive={isFocused && !isAudioPickerOpen && !isSubtitlePickerOpen}>
       <View style={styles.container}>
         {isPlayerReady && (
           <>
@@ -185,6 +220,11 @@ export default function VegaPlayerScreen() {
             onAudioTrackChange={changeAudioTrack}
             isAudioPickerOpen={isAudioPickerOpen}
             onAudioPickerOpenChange={setIsAudioPickerOpen}
+            subtitleTracks={subtitleTracks}
+            selectedSubtitleStreamIndex={selectedSubtitleStreamIndex}
+            onSubtitleTrackChange={changeSubtitleTrack}
+            isSubtitlePickerOpen={isSubtitlePickerOpen}
+            onSubtitlePickerOpenChange={setIsSubtitlePickerOpen}
           />
         )}
       </View>

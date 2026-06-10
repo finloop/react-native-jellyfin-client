@@ -9,15 +9,16 @@ interface PlayerRemoteControlHandlers {
   onTogglePausePlay: () => void;
   onShowControls: () => void;
   onBack: () => void;
-  isAudioPickerOpen: boolean;
-  onCloseAudioPicker: () => void;
+  /** True when any overlay picker (audio/subtitle) is open. */
+  isPickerOpen: boolean;
+  onClosePicker: () => void;
 }
 
 /**
  * Wires the D-pad / remote keys to playback actions while the player is mounted.
  *
  * Also registers an empty hardwareBackPress handler so the RemoteControlManager
- * owns the Back key (this is what lets the audio picker intercept Back instead
+ * owns the Back key (this is what lets an open picker intercept Back instead
  * of the navigator popping the screen).
  */
 export function usePlayerRemoteControl({
@@ -26,8 +27,8 @@ export function usePlayerRemoteControl({
   onTogglePausePlay,
   onShowControls,
   onBack,
-  isAudioPickerOpen,
-  onCloseAudioPicker,
+  isPickerOpen,
+  onClosePicker,
 }: PlayerRemoteControlHandlers) {
   useEffect(() => {
     const handleKeyDown = (key: SupportedKeys) => {
@@ -39,8 +40,8 @@ export function usePlayerRemoteControl({
           onRewind();
           break;
         case SupportedKeys.Back:
-          if (isAudioPickerOpen) {
-            onCloseAudioPicker();
+          if (isPickerOpen) {
+            onClosePicker();
           } else {
             onBack();
           }
@@ -71,7 +72,7 @@ export function usePlayerRemoteControl({
     onTogglePausePlay,
     onShowControls,
     onBack,
-    isAudioPickerOpen,
-    onCloseAudioPicker,
+    isPickerOpen,
+    onClosePicker,
   ]);
 }

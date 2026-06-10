@@ -251,6 +251,14 @@ export class HlsJsPlayer extends PlayerBase {
 
     console.log('W3cMediaApp::hlsjsplayer:Loading the hls player with content URL:', content.uri);
 
+    // Start loading at the requested offset so frag-0 is never fetched and the
+    // decoder primes at the resume/reload position. Client-seeking after a frag-0
+    // load primes the decoder at PTS~0, which then can't cross the jump to a deep
+    // offset and stalls. hls.js reads config.startPosition at MANIFEST_PARSED.
+    if (content.startPosition != null && content.startPosition >= 0) {
+      this.player.config.startPosition = content.startPosition;
+    }
+
     this.player.loadSource(content.uri);
     this.player.attachMedia(this.mediaElement);
   };
