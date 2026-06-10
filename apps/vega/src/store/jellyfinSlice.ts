@@ -17,6 +17,10 @@ export interface JellyfinState {
   isAuthLoading: boolean;
   isLibrariesLoading: boolean;
   isHomeRowsLoading: boolean;
+  // True once the Home rows have loaded successfully at least once. Persisted, so
+  // subsequent mounts/cold starts render cached rows instead of the loading takeover
+  // while a background refetch runs silently.
+  hasLoadedHomeRows: boolean;
   error: string | null;
 }
 
@@ -34,6 +38,7 @@ export const initialState: JellyfinState = {
   isAuthLoading: true,
   isLibrariesLoading: false,
   isHomeRowsLoading: false,
+  hasLoadedHomeRows: false,
   error: null,
 };
 
@@ -131,6 +136,7 @@ const jellyfinSlice = createSlice({
       state.nextUpItems = [];
       state.latestMovies = [];
       state.latestShows = [];
+      state.hasLoadedHomeRows = false;
       state.isAuthLoading = false;
     },
   },
@@ -172,6 +178,7 @@ const jellyfinSlice = createSlice({
       })
       .addCase(fetchHomeRows.fulfilled, (state, action) => {
         state.isHomeRowsLoading = false;
+        state.hasLoadedHomeRows = true;
         state.resumeItems = action.payload.resumeItems;
         state.nextUpItems = action.payload.nextUpItems;
         state.latestMovies = action.payload.latestMovies;

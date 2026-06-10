@@ -31,11 +31,14 @@ export default function VegaHomeScreen() {
     isAuthLoading,
     isLibrariesLoading,
     isHomeRowsLoading,
+    hasLoadedHomeRows,
   } = useSelector((state: RootState) => state.jellyfin);
 
   useEffect(() => {
-    dispatch(loadStoredAuth());
-  }, [dispatch]);
+    if (!accessToken) {
+      dispatch(loadStoredAuth());
+    }
+  }, [accessToken, dispatch]);
 
   useEffect(() => {
     if (accessToken && userId) {
@@ -68,7 +71,12 @@ export default function VegaHomeScreen() {
     [navigation, accessToken, userId],
   );
 
-  if (isAuthLoading || isLibrariesLoading || isHomeRowsLoading) {
+  // Only take over the screen on the very first load (before any data exists).
+  // Once the rows have loaded once, later background refetches keep showing the
+  // cached rows and update them in place, so returning to Home never re-blanks.
+  const isInitialLoading =
+    !hasLoadedHomeRows && (isAuthLoading || isLibrariesLoading || isHomeRowsLoading);
+  if (isInitialLoading) {
     return (
       <View style={gridStyles.container}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
