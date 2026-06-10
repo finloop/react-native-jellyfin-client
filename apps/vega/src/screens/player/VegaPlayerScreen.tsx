@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { SpatialNavigationRoot } from 'react-tv-space-navigation';
 import { useIsFocused } from '@amazon-devices/react-navigation__native';
@@ -114,7 +114,9 @@ export default function VegaPlayerScreen() {
         );
         setPlaySessionId(resolution.playSessionId);
         setMediaSourceId(resolution.mediaSourceId);
-        controller.destroy();
+        // Await teardown before re-init: the old decoder must be fully released
+        // before a new VideoPlayer is created (single decoder instance on Vega).
+        await controller.destroy();
         await controller.init(resolution.url, seekTarget);
       } catch (e) {
         console.error('[VegaPlayerScreen] Failed to reload streams', e);
@@ -153,6 +155,31 @@ export default function VegaPlayerScreen() {
     return controller.destroy;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [movie, isFocused]);
+
+  // Vega's Lifecycle Manager kills apps that hold media (decoder) resources while
+  // backgrounded, so release the player on background and re-acquire on return.
+  // Position is retained by the controller; the prior HLS transcode session may
+  // have been reaped server-side, so we re-resolve a fresh URL to resume in place.
+  const releasedForBackgroundRef = useRef(false);
+  useEffect(() => {
+    const subscription = keplerAppStateManager.addAppStateListener('change', (state) => {
+      if (state === 'background' && !releasedForBackgroundRef.current) {
+        releasedForBackgroundRef.current = true;
+        controller.releaseForBackground();
+      } else if (state === 'active' && releasedForBackgroundRef.current) {
+        releasedForBackgroundRef.current = false;
+        reloadWithStreams(selectedAudioTrackIndex, selectedSubtitleStreamIndex, selectedBitrate);
+      }
+    });
+    return () => subscription.remove();
+  }, [
+    keplerAppStateManager,
+    controller,
+    reloadWithStreams,
+    selectedAudioTrackIndex,
+    selectedSubtitleStreamIndex,
+    selectedBitrate,
+  ]);
 
   usePlaybackReporting({
     itemId,

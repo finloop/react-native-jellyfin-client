@@ -122,6 +122,17 @@ export class VideoPlayerController {
       // target. A client seek after a frag-0 load primes at PTS~0 and then stalls
       // trying to cross the jump to a deep offset.
     });
+    // Native MediaElement errors (decode failures, unsupported codecs, source
+    // errors) surface here — below the hls.js layer, so they're not caught by the
+    // hls 'error' listener. Without this they'd freeze the frame with no error UI.
+    vp.addEventListener('error', () => {
+      if (!isActive()) return;
+      const err = vp.error;
+      console.error(
+        `[VideoPlayerController] MediaElement error code=${err?.code} message=${err?.message}`,
+      );
+      this.callbacks.onError();
+    });
 
     try {
       await vp.initialize();
@@ -153,7 +164,14 @@ export class VideoPlayerController {
     }
   };
 
-  destroy = () => {
+  /**
+   * Detach the controller from its current player/pipeline and reset UI state,
+   * returning the orphaned instances so the caller can release the decoder either
+   * asynchronously (destroy) or synchronously (releaseForBackground). Nulling the
+   * refs first makes any in-flight media events (guarded by isActive) no-ops while
+   * teardown is in progress.
+   */
+  private teardown = (): { vp: VideoPlayer | null; hls: HlsJsPlayer | null } => {
     if (this.scrubDebounce) {
       clearTimeout(this.scrubDebounce);
       this.scrubDebounce = null;
@@ -163,23 +181,62 @@ export class VideoPlayerController {
     this.hlsReady = false;
     this.canPlayFired = false;
     this.nearEnd = false;
-    if (this.surfaceHandle && this.videoPlayer) {
-      this.videoPlayer.clearSurfaceHandle(this.surfaceHandle);
-      this.surfaceHandle = null;
-    }
-    if (this.captionHandle && this.videoPlayer) {
-      this.videoPlayer.clearCaptionViewHandle(this.captionHandle);
-      this.captionHandle = null;
-    }
-    this.hlsPlayer?.destroy();
-    this.hlsPlayer = null;
-    this.videoPlayer?.deinitialize();
-    (global as any).gmedia = null;
+
+    const vp = this.videoPlayer;
+    const hls = this.hlsPlayer;
     this.videoPlayer = null;
+    this.hlsPlayer = null;
+    (global as any).gmedia = null;
+
+    if (this.surfaceHandle && vp) {
+      vp.clearSurfaceHandle(this.surfaceHandle);
+    }
+    this.surfaceHandle = null;
+    if (this.captionHandle && vp) {
+      vp.clearCaptionViewHandle(this.captionHandle);
+    }
+    this.captionHandle = null;
+
     this.callbacks.onPlayerReady(false);
     this.callbacks.onInitialized(false);
     this.callbacks.onBuffering(true);
     this.callbacks.onPausedChange(true);
+
+    return { vp, hls };
+  };
+
+  /**
+   * Full async teardown. Awaiting deinitialize() before the next init() is
+   * required: Vega supports a single (secure) video decoder instance, so a new
+   * VideoPlayer must not be created until the previous one has released it —
+   * otherwise back-to-back reloads (audio/subtitle/bitrate switches) race the old
+   * decoder's teardown against the new one's init.
+   */
+  destroy = async () => {
+    const { vp, hls } = this.teardown();
+    try {
+      await hls?.destroy();
+    } catch {}
+    try {
+      await vp?.deinitialize();
+    } catch {}
+  };
+
+  /**
+   * Synchronous release for the Lifecycle Manager background transition. Vega
+   * kills apps that hold media resources in the background, so the decoder must be
+   * freed before the process is suspended — deinitializeSync blocks (up to the
+   * timeout) where the async deinitialize() might not complete in time. Position
+   * is retained (currentTime is untouched) so playback can resume on foreground.
+   */
+  releaseForBackground = () => {
+    const { vp, hls } = this.teardown();
+    try {
+      hls?.destroy();
+    } catch {}
+    try {
+      vp?.deinitializeSync(1000);
+    } catch {}
   };
 
   seek = (time: number) => {
