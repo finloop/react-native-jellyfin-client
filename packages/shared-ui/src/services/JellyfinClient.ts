@@ -129,7 +129,8 @@ const getLibraryItems = async (
     userId,
     parentId: libraryId,
     fields: [ItemFields.Overview, ItemFields.Genres],
-    limit: 50,
+    // TODO: paginate via startIndex + grid onEndReached for libraries beyond this cap.
+    limit: 200,
     sortBy: ['SortName', 'ProductionYear'],
     recursive: true,
     ...(itemKind ? { includeItemTypes: [itemKind as any] } : {}),

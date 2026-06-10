@@ -10,6 +10,9 @@ export interface JellyfinState {
   serverUrl: string | null;
   libraries: BaseItemDto[];
   libraryItems: Record<string, BaseItemDto[]>;
+  // Per-library in-flight flag for `fetchLibraryItems`, keyed by libraryId (parallel
+  // to `libraryItems`) so opening two libraries in quick succession can't cross-talk.
+  isLibraryItemsLoading: Record<string, boolean>;
   resumeItems: BaseItemDto[];
   nextUpItems: BaseItemDto[];
   latestMovies: BaseItemDto[];
@@ -31,6 +34,7 @@ export const initialState: JellyfinState = {
   serverUrl: null,
   libraries: [],
   libraryItems: {},
+  isLibraryItemsLoading: {},
   resumeItems: [],
   nextUpItems: [],
   latestMovies: [],
@@ -132,6 +136,7 @@ const jellyfinSlice = createSlice({
       state.serverUrl = null;
       state.libraries = [];
       state.libraryItems = {};
+      state.isLibraryItemsLoading = {};
       state.resumeItems = [];
       state.nextUpItems = [];
       state.latestMovies = [];
@@ -169,8 +174,17 @@ const jellyfinSlice = createSlice({
         state.isLibrariesLoading = false;
         state.error = action.error.message ?? 'Failed to fetch libraries';
       })
+      .addCase(fetchLibraryItems.pending, (state, action) => {
+        state.isLibraryItemsLoading[action.meta.arg.libraryId] = true;
+        state.error = null;
+      })
       .addCase(fetchLibraryItems.fulfilled, (state, action) => {
+        state.isLibraryItemsLoading[action.payload.libraryId] = false;
         state.libraryItems[action.payload.libraryId] = action.payload.items;
+      })
+      .addCase(fetchLibraryItems.rejected, (state, action) => {
+        state.isLibraryItemsLoading[action.meta.arg.libraryId] = false;
+        state.error = action.error.message ?? 'Failed to fetch library items';
       })
       .addCase(fetchHomeRows.pending, (state) => {
         state.isHomeRowsLoading = true;

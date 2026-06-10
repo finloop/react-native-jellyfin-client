@@ -1,32 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Image, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import {
   SpatialNavigationFocusableView,
   SpatialNavigationNode,
   SpatialNavigationVirtualizedList,
   DefaultFocus,
 } from 'react-tv-space-navigation';
-import { scaledPixels, colors, safeZones, JellyfinClient } from '@multi-tv/shared-ui';
+import { scaledPixels, colors, safeZones } from '@multi-tv/shared-ui';
 import type { BaseItemDto } from '@jellyfin/sdk/lib/generated-client/models';
 import RowInfoPanel from './RowInfoPanel';
-
-const MovieItem = React.memo(
-  ({ item, isFocused }: { item: BaseItemDto; isFocused: boolean }) => {
-    // Episodes carry their show in SeriesId — prefer the series' portrait poster over
-    // the episode's wide still so every card keeps a consistent portrait shape.
-    const posterId = item.SeriesId ?? item.Id;
-    const uri = posterId ? JellyfinClient.getItemImageUrl(posterId) : undefined;
-    return (
-      <View style={[styles.thumbnail, isFocused && styles.thumbnailFocused]}>
-        {uri ? (
-          <Image source={{ uri }} style={styles.cardImage} resizeMode="cover" />
-        ) : (
-          <View style={styles.cardImage} />
-        )}
-      </View>
-    );
-  },
-);
+import MediaPosterCard from './MediaPosterCard';
 
 type HomeRowProps = {
   title: string;
@@ -58,7 +41,7 @@ function HomeRow({ title, items, onSelect, isFirst }: HomeRowProps) {
         onSelect={() => onSelect(item)}
         onFocus={() => setFocusedItem(item)}
       >
-        {({ isFocused }) => <MovieItem item={item} isFocused={isFocused} />}
+        {({ isFocused }) => <MediaPosterCard item={item} isFocused={isFocused} />}
       </SpatialNavigationFocusableView>
     ),
     [onSelect],
@@ -109,31 +92,5 @@ const styles = StyleSheet.create({
   listWrapper: {
     height: scaledPixels(420),
     paddingHorizontal: scaledPixels(safeZones.actionSafe.horizontal),
-  },
-  thumbnail: {
-    width: scaledPixels(220),
-    height: scaledPixels(350),
-    marginEnd: scaledPixels(20),
-    backgroundColor: colors.card,
-    borderRadius: scaledPixels(12),
-    borderWidth: scaledPixels(5),
-    borderColor: 'transparent',
-    overflow: 'hidden',
-  },
-  thumbnailFocused: {
-    borderColor: colors.focusBorder,
-    borderWidth: scaledPixels(6),
-    transform: [{ scale: 1.1 }],
-    shadowColor: colors.focus,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.9,
-    shadowRadius: scaledPixels(20),
-    elevation: 15,
-  },
-  cardImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: scaledPixels(8),
-    backgroundColor: colors.card,
   },
 });

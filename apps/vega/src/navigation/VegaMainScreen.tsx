@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { useMenuContext, colors } from '@multi-tv/shared-ui';
 import VegaTopBar from '../components/VegaTopBar';
 import VegaHomeScreen from '../screens/VegaHomeScreen';
+import VegaLibrariesScreen from '../screens/VegaLibrariesScreen';
 import VegaPlaceholderScreen from '../screens/VegaPlaceholderScreen';
 import type { TopTab } from './types';
 
@@ -38,7 +39,7 @@ export default function VegaMainScreen() {
       <View style={styles.content}>
         {activeTab === 'Home' && <VegaHomeScreen />}
         {activeTab === 'Search' && <VegaPlaceholderScreen title="Search" />}
-        {activeTab === 'Libraries' && <VegaPlaceholderScreen title="Libraries" />}
+        {activeTab === 'Libraries' && <VegaLibrariesScreen />}
         {activeTab === 'Favourites' && <VegaPlaceholderScreen title="Favourites" />}
       </View>
     </View>
