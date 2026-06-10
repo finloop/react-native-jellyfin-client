@@ -13,7 +13,7 @@ export function useControlsVisibility() {
   const showControls = useCallback(() => {
     setControlsVisible(true);
     if (hideControlsTimeoutRef.current) clearTimeout(hideControlsTimeoutRef.current);
-    hideControlsTimeoutRef.current = setTimeout(() => setControlsVisible(false), 500000);
+    hideControlsTimeoutRef.current = setTimeout(() => setControlsVisible(false), 10000);
   }, []);
 
   useEffect(() => {

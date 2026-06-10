@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { SpatialNavigationFocusableView, DefaultFocus, SpatialNavigationRoot, SpatialNavigationScrollView } from "react-tv-space-navigation";
 import { scaledPixels } from "../../hooks/useScale";
+import { useScrollToSelectedOnOpen } from "../../hooks/useScrollToSelectedOnOpen";
 import { colors } from "../../theme/colors";
 
 export interface SubtitleTrack {
@@ -44,6 +45,8 @@ export const SubtitleTrackPickerModal = React.memo(({
   onSelect,
   onClose,
 }: SubtitleTrackPickerModalProps) => {
+  const selectedRef = useScrollToSelectedOnOpen(visible);
+
   if (!visible) return null;
 
   return (
@@ -53,40 +56,47 @@ export const SubtitleTrackPickerModal = React.memo(({
         <View style={styles.panel}>
           <Text style={styles.panelTitle}>Subtitles</Text>
           <SpatialNavigationScrollView style={styles.scrollView}>
-            <DefaultFocus>
-              <View style={styles.trackList}>
-                {tracks.map((track) => (
-                  <SpatialNavigationFocusableView
-                    key={track.index}
-                    onSelect={() => {
-                      if (track.index !== selectedIndex) {
-                        onSelect(track.index);
-                      }
-                      onClose();
-                    }}
-                  >
-                    {({ isFocused }) => (
-                      <View style={[
-                        styles.trackItem,
-                        track.index === selectedIndex && styles.trackItemSelected,
-                        isFocused && styles.trackItemFocused,
-                      ]}>
-                        <Text style={[
-                          styles.trackItemLabel,
-                          track.index === selectedIndex && styles.trackItemLabelSelected,
-                          isFocused && styles.trackItemLabelFocused,
+            <View style={styles.trackList}>
+              {(() => {
+                // Focus the currently-selected track on open; fall back to the first row.
+                const focusIdx = Math.max(0, tracks.findIndex((t) => t.index === selectedIndex));
+                return tracks.map((track, i) => {
+                  const isDefault = i === focusIdx;
+                  const item = (
+                    <SpatialNavigationFocusableView
+                      key={track.index}
+                      ref={isDefault ? selectedRef : undefined}
+                      onSelect={() => {
+                        if (track.index !== selectedIndex) {
+                          onSelect(track.index);
+                        }
+                        onClose();
+                      }}
+                    >
+                      {({ isFocused }) => (
+                        <View style={[
+                          styles.trackItem,
+                          track.index === selectedIndex && styles.trackItemSelected,
+                          isFocused && styles.trackItemFocused,
                         ]}>
-                          {track.label}
-                        </Text>
-                        {track.index === selectedIndex && (
-                          <Text style={[styles.checkmark, isFocused && styles.checkmarkFocused]}>✓</Text>
-                        )}
-                      </View>
-                    )}
-                  </SpatialNavigationFocusableView>
-                ))}
-              </View>
-            </DefaultFocus>
+                          <Text style={[
+                            styles.trackItemLabel,
+                            track.index === selectedIndex && styles.trackItemLabelSelected,
+                            isFocused && styles.trackItemLabelFocused,
+                          ]}>
+                            {track.label}
+                          </Text>
+                          {track.index === selectedIndex && (
+                            <Text style={[styles.checkmark, isFocused && styles.checkmarkFocused]}>✓</Text>
+                          )}
+                        </View>
+                      )}
+                    </SpatialNavigationFocusableView>
+                  );
+                  return isDefault ? <DefaultFocus key={track.index}>{item}</DefaultFocus> : item;
+                });
+              })()}
+            </View>
           </SpatialNavigationScrollView>
         </View>
       </SpatialNavigationRoot>

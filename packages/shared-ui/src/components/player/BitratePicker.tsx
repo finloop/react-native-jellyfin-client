@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { SpatialNavigationFocusableView, DefaultFocus, SpatialNavigationRoot, SpatialNavigationScrollView } from "react-tv-space-navigation";
 import { scaledPixels } from "../../hooks/useScale";
+import { useScrollToSelectedOnOpen } from "../../hooks/useScrollToSelectedOnOpen";
 import { colors } from "../../theme/colors";
 import { DEFAULT_MAX_BITRATE } from "../../services/JellyfinClient";
 
@@ -58,6 +59,8 @@ export const BitratePickerModal = React.memo(({
   onSelect,
   onClose,
 }: BitratePickerModalProps) => {
+  const selectedRef = useScrollToSelectedOnOpen(visible);
+
   if (!visible) return null;
 
   return (
@@ -67,40 +70,47 @@ export const BitratePickerModal = React.memo(({
         <View style={styles.panel}>
           <Text style={styles.panelTitle}>Quality</Text>
           <SpatialNavigationScrollView style={styles.scrollView}>
-            <DefaultFocus>
-              <View style={styles.trackList}>
-                {options.map((option) => (
-                  <SpatialNavigationFocusableView
-                    key={option.value}
-                    onSelect={() => {
-                      if (option.value !== selectedValue) {
-                        onSelect(option.value);
-                      }
-                      onClose();
-                    }}
-                  >
-                    {({ isFocused }) => (
-                      <View style={[
-                        styles.trackItem,
-                        option.value === selectedValue && styles.trackItemSelected,
-                        isFocused && styles.trackItemFocused,
-                      ]}>
-                        <Text style={[
-                          styles.trackItemLabel,
-                          option.value === selectedValue && styles.trackItemLabelSelected,
-                          isFocused && styles.trackItemLabelFocused,
+            <View style={styles.trackList}>
+              {(() => {
+                // Focus the currently-selected option on open; fall back to the first row.
+                const focusIdx = Math.max(0, options.findIndex((o) => o.value === selectedValue));
+                return options.map((option, i) => {
+                  const isDefault = i === focusIdx;
+                  const item = (
+                    <SpatialNavigationFocusableView
+                      key={option.value}
+                      ref={isDefault ? selectedRef : undefined}
+                      onSelect={() => {
+                        if (option.value !== selectedValue) {
+                          onSelect(option.value);
+                        }
+                        onClose();
+                      }}
+                    >
+                      {({ isFocused }) => (
+                        <View style={[
+                          styles.trackItem,
+                          option.value === selectedValue && styles.trackItemSelected,
+                          isFocused && styles.trackItemFocused,
                         ]}>
-                          {option.label}
-                        </Text>
-                        {option.value === selectedValue && (
-                          <Text style={[styles.checkmark, isFocused && styles.checkmarkFocused]}>✓</Text>
-                        )}
-                      </View>
-                    )}
-                  </SpatialNavigationFocusableView>
-                ))}
-              </View>
-            </DefaultFocus>
+                          <Text style={[
+                            styles.trackItemLabel,
+                            option.value === selectedValue && styles.trackItemLabelSelected,
+                            isFocused && styles.trackItemLabelFocused,
+                          ]}>
+                            {option.label}
+                          </Text>
+                          {option.value === selectedValue && (
+                            <Text style={[styles.checkmark, isFocused && styles.checkmarkFocused]}>✓</Text>
+                          )}
+                        </View>
+                      )}
+                    </SpatialNavigationFocusableView>
+                  );
+                  return isDefault ? <DefaultFocus key={option.value}>{item}</DefaultFocus> : item;
+                });
+              })()}
+            </View>
           </SpatialNavigationScrollView>
         </View>
       </SpatialNavigationRoot>
