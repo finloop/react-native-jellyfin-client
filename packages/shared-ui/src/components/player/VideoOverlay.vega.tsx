@@ -80,11 +80,6 @@ const VideoOverlay: React.FC<VideoOverlayProps> = React.memo(({
                 onOpen={() => onAudioPickerOpenChange(true)}
               />
           </SpatialNavigationNode>
-          <FocusablePressable
-            text="Exit"
-            onSelect={onExit}
-            style={styles.controlButton}
-          />
         </SpatialNavigationView>
       </View>
 
