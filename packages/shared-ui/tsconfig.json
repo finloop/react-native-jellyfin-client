@@ -7,7 +7,9 @@
     "outDir": "./dist",
     "paths": {
       "react": [ "./node_modules/@types/react" ],
-      "react-tv-space-navigation": [ "../../apps/vega/node_modules/react-tv-space-navigation" ]
+      "react-tv-space-navigation": [ "../../apps/vega/node_modules/react-tv-space-navigation" ],
+      "@jellyfin/sdk*": ["../../apps/vega/node_modules/@jellyfin/sdk*"],
+      "@jellyfin/sdk": ["../../apps/vega/node_modules/@jellyfin/sdk"]
     }
   },
   "include": ["src/**/*"],
