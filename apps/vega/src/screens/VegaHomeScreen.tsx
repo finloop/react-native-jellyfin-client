@@ -1,26 +1,24 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
-import { useNavigation, useIsFocused, DrawerActions } from '@amazon-devices/react-navigation__native';
+import { useNavigation } from '@amazon-devices/react-navigation__native';
 import type { NativeStackNavigationProp } from '@amazon-devices/react-navigation__native-stack';
 import { SpatialNavigationRoot, SpatialNavigationScrollView } from 'react-tv-space-navigation';
-import { Direction } from '@bam.tech/lrud';
-import { useMenuContext, scaledPixels, colors, safeZones, getOpenDrawerDirection, JellyfinClient } from '@multi-tv/shared-ui';
+import { scaledPixels, colors, safeZones, JellyfinClient } from '@multi-tv/shared-ui';
 import type { RootStackParamList } from '../navigation/types';
 import type { RootState, AppDispatch } from '../store';
 import { loadStoredAuth, fetchLibraries, fetchHomeRows } from '../store/jellyfinSlice';
 import type { BaseItemDto } from '@jellyfin/sdk/lib/generated-client/models';
 import HomeRow from '../components/HomeRow';
 import { PANEL_HEIGHT } from '../components/RowInfoPanel';
+import { useContentFocusRoot } from '../hooks/useContentFocusRoot';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Main'>;
 
 export default function VegaHomeScreen() {
   const navigation = useNavigation<NavigationProp>();
   const dispatch = useDispatch<AppDispatch>();
-  const { isOpen: isMenuOpen, toggleMenu } = useMenuContext();
-  const isFocused = useIsFocused();
-  const isActive = isFocused && !isMenuOpen;
+  const { isActive, onDirectionHandledWithoutMovement } = useContentFocusRoot();
 
   const {
     accessToken,
@@ -54,18 +52,6 @@ export default function VegaHomeScreen() {
       dispatch(fetchHomeRows());
     }
   }, [accessToken, userId, libraries, dispatch]);
-
-  // Fires only when a direction press had nowhere to go — i.e. at the left edge of a
-  // row — so opening the drawer on the drawer direction works from any row's start.
-  const onDirectionHandledWithoutMovement = useCallback(
-    (movement: Direction) => {
-      if (movement === getOpenDrawerDirection()) {
-        navigation.dispatch(DrawerActions.openDrawer());
-        toggleMenu(true);
-      }
-    },
-    [toggleMenu, navigation],
-  );
 
   const onSelect = useCallback(
     (item: BaseItemDto) => {

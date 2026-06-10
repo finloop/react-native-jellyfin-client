@@ -8,6 +8,8 @@ export * from './theme';
 // Components
 export { default as FocusablePressable } from './components/FocusablePressable';
 export { default as LoadingIndicator } from './components/LoadingIndicator';
+export { default as SeasonSelector } from './components/SeasonSelector';
+export { default as EpisodeRow } from './components/EpisodeRow';
 export { MenuProvider, useMenuContext } from './components/MenuContext';
 export { default as CustomDrawerContent } from './components/CustomDrawerContent';
 export { default as PlatformLinearGradient } from './components/PlatformLinearGradient';

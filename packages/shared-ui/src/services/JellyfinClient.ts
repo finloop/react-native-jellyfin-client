@@ -181,6 +181,62 @@ const getNextUp = async (token: string, userId: string): Promise<BaseItemDto[]> 
   return res.data.Items ?? [];
 };
 
+// Seasons of a Series, in air order. ItemCounts populates ChildCount (episodes/season),
+// used for the "N Seasons · M Episodes" summary on the details screen.
+const getSeasons = async (
+  token: string,
+  userId: string,
+  seriesId: string,
+): Promise<BaseItemDto[]> => {
+  const api = authApi(token);
+  const res = await getTvShowsApi(api).getSeasons({
+    seriesId,
+    userId,
+    fields: [ItemFields.ItemCounts],
+    enableImageTypes: HOME_IMAGE_TYPES,
+  });
+  return res.data.Items ?? [];
+};
+
+// Episodes for one season of a Series. enableUserData drives the resume progress bar.
+const getEpisodes = async (
+  token: string,
+  userId: string,
+  seriesId: string,
+  seasonId: string,
+): Promise<BaseItemDto[]> => {
+  const api = authApi(token);
+  const res = await getTvShowsApi(api).getEpisodes({
+    seriesId,
+    userId,
+    seasonId,
+    enableUserData: true,
+    fields: HOME_FIELDS,
+    enableImageTypes: HOME_IMAGE_TYPES,
+  });
+  return res.data.Items ?? [];
+};
+
+// The series' next episode to play: in-progress first (enableResumable), then the next
+// unwatched one — powers the details screen's primary Play/Resume button.
+const getSeriesNextUp = async (
+  token: string,
+  userId: string,
+  seriesId: string,
+): Promise<BaseItemDto | null> => {
+  const api = authApi(token);
+  const res = await getTvShowsApi(api).getNextUp({
+    userId,
+    seriesId,
+    fields: HOME_FIELDS,
+    enableImageTypes: HOME_IMAGE_TYPES,
+    enableUserData: true,
+    enableResumable: true,
+    limit: 1,
+  });
+  return res.data.Items?.[0] ?? null;
+};
+
 // Recently Added in a library. Note: getLatestMedia returns the array directly on
 // `data`, not `data.Items` like the other endpoints.
 const getLatestMedia = async (
@@ -409,6 +465,9 @@ export default {
   getItemDetails,
   getResumeItems,
   getNextUp,
+  getSeasons,
+  getEpisodes,
+  getSeriesNextUp,
   getLatestMedia,
   getPlaybackUrl,
   reportPlaybackStart,

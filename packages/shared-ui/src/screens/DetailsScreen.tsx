@@ -1,12 +1,18 @@
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StyleSheet, View, Image, Text, Platform } from 'react-native';
-import { SpatialNavigationRoot, DefaultFocus } from 'react-tv-space-navigation';
+import {
+  SpatialNavigationRoot,
+  SpatialNavigationScrollView,
+  DefaultFocus,
+} from 'react-tv-space-navigation';
 import { scaledPixels } from '../hooks/useScale';
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { useIsFocused } from '@react-navigation/native';
 import type { BaseItemDto } from '@jellyfin/sdk/lib/generated-client/models';
 import FocusablePressable from '../components/FocusablePressable';
+import SeasonSelector from '../components/SeasonSelector';
+import EpisodeRow from '../components/EpisodeRow';
 import { RootStackParamList } from '../navigation/types';
 import { safeZones, colors } from '../theme';
 import JellyfinClient from '../services/JellyfinClient';
@@ -41,6 +47,16 @@ export default function DetailsScreen() {
   // id/title/description) still show crew + metadata. Falls back to route params.
   const [item, setItem] = useState<BaseItemDto | null>(null);
 
+  // Series (TV show) browsing state. Only populated once the fetched item is a Series.
+  const [seasons, setSeasons] = useState<BaseItemDto[]>([]);
+  const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
+  const [episodes, setEpisodes] = useState<BaseItemDto[]>([]);
+  const [nextUpEpisode, setNextUpEpisode] = useState<BaseItemDto | null>(null);
+  const [seasonsLoading, setSeasonsLoading] = useState(false);
+  const [episodesLoading, setEpisodesLoading] = useState(false);
+
+  const isSeries = item?.Type === 'Series';
+
   useEffect(() => {
     if (!accessToken || !userId || !movie) return;
     let cancelled = false;
@@ -55,6 +71,55 @@ export default function DetailsScreen() {
       cancelled = true;
     };
   }, [accessToken, userId, movie]);
+
+  // Series: load seasons + the next-up episode once we know the item is a Series.
+  // Auto-select the first non-special season so the default view isn't "Specials".
+  useEffect(() => {
+    if (!accessToken || !userId || !item || item.Type !== 'Series' || !item.Id) return;
+    const seriesId = item.Id;
+    let cancelled = false;
+    setSeasonsLoading(true);
+    Promise.all([
+      JellyfinClient.getSeasons(accessToken, userId, seriesId),
+      JellyfinClient.getSeriesNextUp(accessToken, userId, seriesId),
+    ])
+      .then(([seasonData, nextUp]) => {
+        if (cancelled) return;
+        setSeasons(seasonData);
+        setNextUpEpisode(nextUp);
+        const firstReal =
+          seasonData.find((s) => (s.IndexNumber ?? 0) > 0) ?? seasonData[0];
+        setSelectedSeasonId(firstReal?.Id ?? null);
+      })
+      .catch((e) => console.error('[DetailsScreen] Failed to fetch seasons', e))
+      .finally(() => {
+        if (!cancelled) setSeasonsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, userId, item]);
+
+  // Series: (re)load episodes whenever the selected season changes. Clear first so the
+  // row shows the loader rather than flashing the previous season's episodes.
+  useEffect(() => {
+    if (!accessToken || !userId || !item?.Id || !selectedSeasonId) return;
+    const seriesId = item.Id;
+    let cancelled = false;
+    setEpisodesLoading(true);
+    setEpisodes([]);
+    JellyfinClient.getEpisodes(accessToken, userId, seriesId, selectedSeasonId)
+      .then((data) => {
+        if (!cancelled) setEpisodes(data);
+      })
+      .catch((e) => console.error('[DetailsScreen] Failed to fetch episodes', e))
+      .finally(() => {
+        if (!cancelled) setEpisodesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, userId, item?.Id, selectedSeasonId]);
 
   // Hero background: prefer the item's landscape backdrop (Primary is a portrait
   // poster, which crops badly when 'cover'-filled into this full-screen view). The
@@ -124,44 +189,89 @@ export default function DetailsScreen() {
     return entries;
   }, [item]);
 
-  const navigate = useCallback(async () => {
-    if (resolvingRef.current) return;
-    resolvingRef.current = true;
-    setIsResolvingPlaybackUrl(true);
+  // Resolves playback for any playable item (a movie or a single episode) and navigates
+  // to the Player. Defaults to the route's movie id so the movie button can call it bare;
+  // episodes pass their own id + still so playback reporting keys off the episode.
+  const playItem = useCallback(
+    async (playableId: string = movie, posterImage: string = headerImage) => {
+      if (resolvingRef.current) return;
+      resolvingRef.current = true;
+      setIsResolvingPlaybackUrl(true);
 
-    try {
-      if (accessToken && userId) {
-        const { url, format, audioTracks, subtitleTracks, audioStreamIndex, subtitleStreamIndex, playSessionId, mediaSourceId, resumePositionTicks, runTimeTicks } =
-          await JellyfinClient.getPlaybackUrl(accessToken, userId, movie);
-        navigation.navigate('Player', {
-          movie: url,
-          headerImage: headerImage,
-          format,
-          itemId: movie,
-          audioTracks,
-          subtitleTracks,
-          audioStreamIndex,
-          subtitleStreamIndex,
-          accessToken,
-          userId,
-          playSessionId,
-          mediaSourceId,
-          resumePositionTicks,
-          runTimeTicks,
-        });
-      } else {
-        navigation.navigate('Player', {
-          movie: movie,
-          headerImage: headerImage,
-        });
+      try {
+        if (accessToken && userId) {
+          const { url, format, audioTracks, subtitleTracks, audioStreamIndex, subtitleStreamIndex, playSessionId, mediaSourceId, resumePositionTicks, runTimeTicks } =
+            await JellyfinClient.getPlaybackUrl(accessToken, userId, playableId);
+          navigation.navigate('Player', {
+            movie: url,
+            headerImage: posterImage,
+            format,
+            itemId: playableId,
+            audioTracks,
+            subtitleTracks,
+            audioStreamIndex,
+            subtitleStreamIndex,
+            accessToken,
+            userId,
+            playSessionId,
+            mediaSourceId,
+            resumePositionTicks,
+            runTimeTicks,
+          });
+        } else {
+          navigation.navigate('Player', {
+            movie: playableId,
+            headerImage: posterImage,
+          });
+        }
+      } catch (e) {
+        console.error('[DetailsScreen] Failed to resolve playback URL', e);
+      } finally {
+        setIsResolvingPlaybackUrl(false);
+        resolvingRef.current = false;
       }
-    } catch (e) {
-      console.error('[DetailsScreen] Failed to resolve playback URL', e);
-    } finally {
-      setIsResolvingPlaybackUrl(false);
-      resolvingRef.current = false;
+    },
+    [navigation, movie, headerImage, accessToken, userId],
+  );
+
+  // The episode the primary Play/Resume button targets: the series' next-up/in-progress
+  // episode, falling back to the first episode of the currently selected season.
+  const playTarget = nextUpEpisode ?? episodes[0] ?? null;
+
+  const playEpisode = useCallback(
+    (episode: BaseItemDto | null) => {
+      if (!episode?.Id) return;
+      playItem(episode.Id, JellyfinClient.getItemImageUrl(episode.Id));
+    },
+    [playItem],
+  );
+
+  // "5 Seasons · 62 Episodes" — season count is on the Series item immediately; the
+  // episode total is summed from the loaded seasons' ItemCounts.
+  const seriesSummary = useMemo(() => {
+    if (!isSeries) return '';
+    const seasonCount = item?.ChildCount ?? seasons.length;
+    const episodeCount = seasons.reduce((n, s) => n + (s.ChildCount ?? 0), 0);
+    const parts: string[] = [];
+    if (seasonCount) {
+      parts.push(`${seasonCount} ${seasonCount === 1 ? 'Season' : 'Seasons'}`);
     }
-  }, [navigation, movie, headerImage, accessToken, userId]);
+    if (episodeCount) parts.push(`${episodeCount} Episodes`);
+    return parts.join(' · ');
+  }, [isSeries, item, seasons]);
+
+  // Label for the primary Play/Resume button, derived from the target episode.
+  const playLabel = useMemo(() => {
+    if (isResolvingPlaybackUrl) return 'Loading...';
+    const ep = playTarget;
+    if (!ep) return 'Play';
+    const s = ep.ParentIndexNumber;
+    const e = ep.IndexNumber;
+    const se = s != null && e != null ? ` S${s}·E${e}` : '';
+    if ((ep.UserData?.PlaybackPositionTicks ?? 0) > 0) return `Resume${se}`;
+    if (s === 1 && e === 1) return 'Play';
+    return `Continue${se}`;
+  }, [isResolvingPlaybackUrl, playTarget]);
 
   return (
     <SpatialNavigationRoot isActive={isFocused}>
@@ -174,11 +284,15 @@ export default function DetailsScreen() {
             style={detailsStyles.backButton}
           />
         )}
-        <View style={detailsStyles.contentContainer}>
-          <View style={detailsStyles.topContent}>
+        {isSeries ? (
+          <SpatialNavigationScrollView
+            offsetFromStart={scaledPixels(80)}
+            style={detailsStyles.seriesScroll}
+            contentContainerStyle={detailsStyles.seriesScrollContent}
+          >
             <Text style={detailsStyles.title}>{title}</Text>
 
-            {/* Metadata row */}
+            {/* Metadata row (includes the season/episode summary for series) */}
             <View style={detailsStyles.metadataRow}>
               {displayYear && (
                 <Text style={detailsStyles.metadataText}>{displayYear}</Text>
@@ -186,9 +300,9 @@ export default function DetailsScreen() {
               {displayContentRating && (
                 <Text style={detailsStyles.metadataText}>{displayContentRating}</Text>
               )}
-              {formattedDuration && (
-                <Text style={detailsStyles.metadataText}>{formattedDuration}</Text>
-              )}
+              {seriesSummary ? (
+                <Text style={detailsStyles.metadataText}>{seriesSummary}</Text>
+              ) : null}
               {ratingDisplay && (
                 <Text style={detailsStyles.metadataText}>{ratingDisplay}</Text>
               )}
@@ -205,28 +319,93 @@ export default function DetailsScreen() {
               </View>
             )}
 
-            <Text style={detailsStyles.description}>{displayDescription}</Text>
-          </View>
-          <View style={detailsStyles.bottomContent}>
-            {crew.length > 0 && (
-              <View style={detailsStyles.crewContainer}>
-                {crew.map((member) => (
-                  <View key={member.role} style={detailsStyles.crewMember}>
-                    <Text style={detailsStyles.crewRole}>{member.role}</Text>
-                    <Text style={detailsStyles.crewName}>{member.name}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
+            <Text style={detailsStyles.description} numberOfLines={3}>
+              {displayDescription}
+            </Text>
+
             <DefaultFocus>
               <FocusablePressable
-                text={isResolvingPlaybackUrl ? 'Loading...' : 'Watch now'}
-                onSelect={navigate}
+                text={playLabel}
+                onSelect={() => playEpisode(playTarget)}
                 style={buttonStyle}
               />
             </DefaultFocus>
+
+            {seasons.length > 0 && (
+              <View style={detailsStyles.seriesSection}>
+                <Text style={detailsStyles.sectionTitle}>Seasons</Text>
+                <SeasonSelector
+                  seasons={seasons}
+                  selectedSeasonId={selectedSeasonId}
+                  onSelectSeason={setSelectedSeasonId}
+                />
+              </View>
+            )}
+
+            <View style={detailsStyles.seriesSection}>
+              <Text style={detailsStyles.sectionTitle}>Episodes</Text>
+              <EpisodeRow
+                episodes={episodes}
+                loading={episodesLoading || seasonsLoading}
+                onSelectEpisode={playEpisode}
+              />
+            </View>
+          </SpatialNavigationScrollView>
+        ) : (
+          <View style={detailsStyles.contentContainer}>
+            <View style={detailsStyles.topContent}>
+              <Text style={detailsStyles.title}>{title}</Text>
+
+              {/* Metadata row */}
+              <View style={detailsStyles.metadataRow}>
+                {displayYear && (
+                  <Text style={detailsStyles.metadataText}>{displayYear}</Text>
+                )}
+                {displayContentRating && (
+                  <Text style={detailsStyles.metadataText}>{displayContentRating}</Text>
+                )}
+                {formattedDuration && (
+                  <Text style={detailsStyles.metadataText}>{formattedDuration}</Text>
+                )}
+                {ratingDisplay && (
+                  <Text style={detailsStyles.metadataText}>{ratingDisplay}</Text>
+                )}
+              </View>
+
+              {/* Genres */}
+              {displayGenres && displayGenres.length > 0 && (
+                <View style={detailsStyles.genresContainer}>
+                  {displayGenres.map((genre: string, index: number) => (
+                    <View key={index} style={detailsStyles.genreTag}>
+                      <Text style={detailsStyles.genreText}>{genre}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              <Text style={detailsStyles.description}>{displayDescription}</Text>
+            </View>
+            <View style={detailsStyles.bottomContent}>
+              {crew.length > 0 && (
+                <View style={detailsStyles.crewContainer}>
+                  {crew.map((member) => (
+                    <View key={member.role} style={detailsStyles.crewMember}>
+                      <Text style={detailsStyles.crewRole}>{member.role}</Text>
+                      <Text style={detailsStyles.crewName}>{member.name}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              <DefaultFocus>
+                <FocusablePressable
+                  text={isResolvingPlaybackUrl ? 'Loading...' : 'Watch now'}
+                  onSelect={() => playItem()}
+                  style={buttonStyle}
+                />
+              </DefaultFocus>
+            </View>
           </View>
-        </View>
+        )}
       </View>
     </SpatialNavigationRoot>
   );
@@ -255,6 +434,28 @@ const detailsStyles = StyleSheet.create({
       paddingTop: scaledPixels(safeZones.titleSafe.vertical),
       paddingBottom: scaledPixels(safeZones.actionSafe.vertical),
       justifyContent: 'flex-end',
+    },
+    // Series layout flows top-down inside a scroll view (play button + season selector +
+    // episode row exceed one screen), unlike the movie layout which pins to the bottom.
+    seriesScroll: {
+      flex: 1,
+    },
+    seriesScrollContent: {
+      paddingHorizontal: scaledPixels(safeZones.titleSafe.horizontal),
+      paddingTop: scaledPixels(safeZones.titleSafe.vertical),
+      paddingBottom: scaledPixels(safeZones.actionSafe.vertical),
+    },
+    seriesSection: {
+      marginTop: scaledPixels(40),
+    },
+    sectionTitle: {
+      fontSize: scaledPixels(32),
+      fontWeight: 'bold',
+      color: colors.text,
+      marginBottom: scaledPixels(20),
+      textShadowColor: 'rgba(0, 0, 0, 0.9)',
+      textShadowOffset: { width: 0, height: 2 },
+      textShadowRadius: 8,
     },
     topContent: {
       flex: 1,

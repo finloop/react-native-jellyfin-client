@@ -1,13 +1,10 @@
-export type DrawerParamList = {
-  Home: undefined;
-  Explore: undefined;
-  TV: undefined;
-  Settings: undefined;
-};
+/** Top-level views switchable from the top navigation bar. */
+export type TopTab = 'Search' | 'Home' | 'Libraries' | 'Favourites';
 
 export type RootStackParamList = {
   JellyfinLogin: undefined;
   Main: undefined;
+  Settings: undefined;
   Details: {
     title: string;
     description: string;
