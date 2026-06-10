@@ -3,6 +3,12 @@ import { VideoPlayer } from '@amazon-devices/react-native-w3cmedia';
 import { HlsJsPlayer } from '../../hlsjsplayer/HlsJsPlayer';
 import { installPolyfills } from '../../hlsjsplayer/polyfills';
 
+const SCRUB_STEP_BASE = 10; // s — single tap / first press
+const SCRUB_STEP_MAX = 60; // s — acceleration cap
+const SCRUB_ACCEL = 1.25; // multiplier per fast consecutive press
+const SCRUB_FAST_MS = 250; // presses closer than this accelerate
+const SCRUB_IDLE_MS = 450; // commit this long after the last press
+
 /**
  * Callbacks the controller uses to push player state back into React.
  * Each maps to a single piece of UI state owned by useVideoPlayer.
@@ -16,6 +22,7 @@ export interface VideoPlayerCallbacks {
   onError: () => void;
   onPlayerReady: (ready: boolean) => void;
   onPausedChange: (paused: boolean) => void;
+  onScrubTime: (scrubTime: number | null) => void;
 }
 
 /**
@@ -41,6 +48,16 @@ export class VideoPlayerController {
   private nearEnd = false;
   private duration = 0;
   private currentTime = 0;
+
+  // Scrub state: while the user holds/rapid-presses FF/RW we only move a preview
+  // target and keep the player paused; a single real seek is committed once the
+  // presses stop (see scrubBy/commitScrub).
+  private isScrubbing = false;
+  private scrubTarget = 0;
+  private wasPlaying = false;
+  private scrubStep = SCRUB_STEP_BASE;
+  private lastScrubPress = 0;
+  private scrubDebounce: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     initialUri: string,
@@ -80,6 +97,7 @@ export class VideoPlayerController {
     });
     vp.addEventListener('timeupdate', () => {
       if (!isActive()) return;
+      if (this.isScrubbing) return; // preview owns currentTime while scrubbing
       const ct = vp.currentTime || 0;
       this.currentTime = ct;
       this.callbacks.onTimeUpdate(ct);
@@ -130,6 +148,12 @@ export class VideoPlayerController {
   };
 
   destroy = () => {
+    if (this.scrubDebounce) {
+      clearTimeout(this.scrubDebounce);
+      this.scrubDebounce = null;
+    }
+    this.isScrubbing = false;
+    this.callbacks.onScrubTime(null);
     this.hlsReady = false;
     this.canPlayFired = false;
     this.nearEnd = false;
@@ -162,11 +186,62 @@ export class VideoPlayerController {
     }
   };
 
-  seekBy = (delta: number) => {
-    this.seek(this.currentTime + delta);
+  /**
+   * Accumulate a preview-only seek in `dir` (+1 forward, -1 back) without
+   * touching real playback. The first press of a burst snapshots the play state
+   * and pauses the video; sustained fast presses accelerate the step. The real
+   * seek is committed once SCRUB_IDLE_MS elapses with no further presses.
+   */
+  scrubBy = (dir: 1 | -1) => {
+    if (!this.videoPlayer || !this.duration || !this.canPlayFired) return;
+
+    const now = Date.now();
+    if (!this.isScrubbing) {
+      // first press of a burst: snapshot + pause
+      this.isScrubbing = true;
+      this.wasPlaying = !this.videoPlayer.paused;
+      this.scrubTarget = this.currentTime;
+      this.scrubStep = SCRUB_STEP_BASE;
+      if (!this.videoPlayer.paused) {
+        this.videoPlayer.pause();
+        this.callbacks.onPausedChange(true);
+      }
+    } else if (now - this.lastScrubPress < SCRUB_FAST_MS) {
+      this.scrubStep = Math.min(this.scrubStep * SCRUB_ACCEL, SCRUB_STEP_MAX); // accelerate
+    } else {
+      this.scrubStep = SCRUB_STEP_BASE; // slow taps stay precise
+    }
+    this.lastScrubPress = now;
+
+    // accumulate target, clamp (leave 1s margin so FF-to-end can't auto-exit)
+    this.scrubTarget = Math.max(
+      0,
+      Math.min(this.scrubTarget + this.scrubStep * dir, this.duration - 1),
+    );
+    this.callbacks.onScrubTime(this.scrubTarget); // preview only — NO player write
+
+    if (this.scrubDebounce) clearTimeout(this.scrubDebounce);
+    this.scrubDebounce = setTimeout(this.commitScrub, SCRUB_IDLE_MS);
+  };
+
+  private commitScrub = () => {
+    if (!this.isScrubbing) return;
+    this.isScrubbing = false;
+    if (this.scrubDebounce) {
+      clearTimeout(this.scrubDebounce);
+      this.scrubDebounce = null;
+    }
+    this.seek(this.scrubTarget); // the single real currentTime write
+    this.callbacks.onScrubTime(null); // hand UI back to timeupdate-driven currentTime
+    this.scrubStep = SCRUB_STEP_BASE;
+    if (this.wasPlaying && this.videoPlayer && this.canPlayFired) {
+      this.videoPlayer.play();
+      this.callbacks.onPausedChange(false);
+    }
   };
 
   togglePausePlay = () => {
+    if (this.isScrubbing) this.commitScrub();
     if (!this.videoPlayer || !this.canPlayFired) return;
     if (this.videoPlayer.paused) {
       this.videoPlayer.play();

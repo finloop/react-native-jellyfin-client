@@ -42,6 +42,7 @@ export default function VegaPlayerScreen() {
     isVideoError,
     currentTime,
     duration,
+    scrubTime,
   } = useVideoPlayer(movie, componentInstance);
 
   const { controlsVisible, showControls } = useControlsVisibility();
@@ -57,12 +58,12 @@ export default function VegaPlayerScreen() {
   }, [controller, showControls]);
 
   const fastForward = useCallback(() => {
-    controller.seekBy(10);
+    controller.scrubBy(1);
     showControls();
   }, [controller, showControls]);
 
   const rewind = useCallback(() => {
-    controller.seekBy(-10);
+    controller.scrubBy(-1);
     showControls();
   }, [controller, showControls]);
 
@@ -150,7 +151,7 @@ export default function VegaPlayerScreen() {
             paused={paused}
             onPlayPause={togglePausePlay}
             onExit={navigateBack}
-            currentTime={currentTime}
+            currentTime={scrubTime ?? currentTime}
             duration={duration}
             isBuffering={isVideoBuffering}
             audioTracks={audioTracks}

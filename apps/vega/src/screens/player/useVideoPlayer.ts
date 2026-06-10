@@ -22,6 +22,7 @@ export function useVideoPlayer(
   const [isVideoError, setIsVideoError] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [scrubTime, setScrubTime] = useState<number | null>(null);
 
   const controllerRef = useRef<VideoPlayerController | null>(null);
   if (!controllerRef.current) {
@@ -34,6 +35,7 @@ export function useVideoPlayer(
       onError: () => setIsVideoError(true),
       onPlayerReady: setIsPlayerReady,
       onPausedChange: setPaused,
+      onScrubTime: setScrubTime,
     });
   }
 
@@ -47,5 +49,6 @@ export function useVideoPlayer(
     isVideoError,
     currentTime,
     duration,
+    scrubTime,
   };
 }

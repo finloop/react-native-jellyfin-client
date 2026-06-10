@@ -1,6 +1,7 @@
 import React from "react";
-import { View, StyleSheet, I18nManager } from "react-native";
+import { View, Text, StyleSheet, I18nManager, DimensionValue } from "react-native";
 import { scaledPixels } from "../../hooks/useScale";
+import { formatTime } from "../../utils/formatTime";
 
 interface SeekBarProps {
   currentTime: number;
@@ -13,19 +14,28 @@ const SeekBar = React.memo(({ currentTime, duration }: SeekBarProps) => {
     return (currentTime / duration) * 100;
   }, [currentTime, duration]);
 
-  const thumbPosition = I18nManager.isRTL
-    ? { right: `${percentage}%` }
-    : { left: `${percentage}%` };
+  const offset = `${percentage}%` as DimensionValue;
+  const thumbPosition = I18nManager.isRTL ? { right: offset } : { left: offset };
 
   return (
-    <View style={seekBarStyles.seekbarContainer}>
-      <View style={seekBarStyles.seekbarTrack} />
-      <View style={[seekBarStyles.seekbarThumb, thumbPosition]} />
+    <View>
+      <Text style={seekBarStyles.timeLabel}>
+        {formatTime(currentTime)} / {formatTime(duration)}
+      </Text>
+      <View style={seekBarStyles.seekbarContainer}>
+        <View style={seekBarStyles.seekbarTrack} />
+        <View style={[seekBarStyles.seekbarThumb, thumbPosition]} />
+      </View>
     </View>
   );
 });
 
 const seekBarStyles = StyleSheet.create({
+  timeLabel: {
+    color: "#fff",
+    fontSize: scaledPixels(24),
+    marginBottom: scaledPixels(4),
+  },
   seekbarContainer: {
     flex: 1,
     flexDirection: "row",
