@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation, useIsFocused, DrawerActions } from '@amazon-devices/react-navigation__native';
@@ -8,7 +8,7 @@ import { Direction } from '@bam.tech/lrud';
 import { useMenuContext, scaledPixels, colors, safeZones, getOpenDrawerDirection, JellyfinClient } from '@multi-tv/shared-ui';
 import type { RootStackParamList } from '../navigation/types';
 import type { RootState, AppDispatch } from '../store';
-import { loadStoredAuth, fetchLibraries, fetchLibraryItems } from '../store/jellyfinSlice';
+import { loadStoredAuth, fetchLibraries, fetchHomeRows } from '../store/jellyfinSlice';
 import type { BaseItemDto } from '@jellyfin/sdk/lib/generated-client/models';
 import HomeRow from '../components/HomeRow';
 import { PANEL_HEIGHT } from '../components/RowInfoPanel';
@@ -26,9 +26,13 @@ export default function VegaHomeScreen() {
     accessToken,
     userId,
     libraries,
-    libraryItems,
+    resumeItems,
+    nextUpItems,
+    latestMovies,
+    latestShows,
     isAuthLoading,
     isLibrariesLoading,
+    isHomeRowsLoading,
   } = useSelector((state: RootState) => state.jellyfin);
 
   useEffect(() => {
@@ -41,15 +45,15 @@ export default function VegaHomeScreen() {
     }
   }, [accessToken, userId, dispatch]);
 
+  // Once libraries load (needed to resolve the recently-added parentIds), fetch the
+  // curated Home rows exactly once.
+  const hasFetchedRowsRef = useRef(false);
   useEffect(() => {
-    if (accessToken && userId && libraries.length > 0) {
-      libraries.forEach((lib) => {
-        if (lib.Id && !libraryItems[lib.Id]) {
-          dispatch(fetchLibraryItems({ libraryId: lib.Id, collectionType: lib.CollectionType }));
-        }
-      });
+    if (accessToken && userId && libraries.length > 0 && !hasFetchedRowsRef.current) {
+      hasFetchedRowsRef.current = true;
+      dispatch(fetchHomeRows());
     }
-  }, [accessToken, userId, libraries, libraryItems, dispatch]);
+  }, [accessToken, userId, libraries, dispatch]);
 
   // Fires only when a direction press had nowhere to go — i.e. at the left edge of a
   // row — so opening the drawer on the drawer direction works from any row's start.
@@ -78,7 +82,7 @@ export default function VegaHomeScreen() {
     [navigation, accessToken, userId],
   );
 
-  if (isAuthLoading || isLibrariesLoading || libraries.length === 0) {
+  if (isAuthLoading || isLibrariesLoading || isHomeRowsLoading) {
     return (
       <View style={gridStyles.container}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -90,9 +94,12 @@ export default function VegaHomeScreen() {
     );
   }
 
-  const visibleLibraries = libraries.filter(
-    (lib: BaseItemDto) => lib.Id && libraryItems[lib.Id] && libraryItems[lib.Id].length > 0,
-  );
+  const rows: { key: string; title: string; items: BaseItemDto[] }[] = [
+    { key: 'resume', title: 'Kontynuuj odtwarzanie', items: resumeItems },
+    { key: 'nextup', title: 'Do obejrzenia', items: nextUpItems },
+    { key: 'movies', title: 'Filmy - ostatnio dodane', items: latestMovies },
+    { key: 'shows', title: 'Shows - ostatnio dodane', items: latestShows },
+  ].filter((row) => row.items.length > 0);
 
   return (
     <SpatialNavigationRoot isActive={isActive} onDirectionHandledWithoutMovement={onDirectionHandledWithoutMovement}>
@@ -102,11 +109,11 @@ export default function VegaHomeScreen() {
           style={gridStyles.scrollContent}
           contentContainerStyle={gridStyles.scrollContentContainer}
         >
-          {visibleLibraries.map((lib: BaseItemDto, index: number) => (
+          {rows.map((row, index) => (
             <HomeRow
-              key={lib.Id}
-              title={lib.Name ?? 'Library'}
-              items={libraryItems[lib.Id!] ?? []}
+              key={row.key}
+              title={row.title}
+              items={row.items}
               onSelect={onSelect}
               isFirst={index === 0}
             />

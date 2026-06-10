@@ -10,20 +10,30 @@ export interface JellyfinState {
   serverUrl: string | null;
   libraries: BaseItemDto[];
   libraryItems: Record<string, BaseItemDto[]>;
+  resumeItems: BaseItemDto[];
+  nextUpItems: BaseItemDto[];
+  latestMovies: BaseItemDto[];
+  latestShows: BaseItemDto[];
   isAuthLoading: boolean;
   isLibrariesLoading: boolean;
+  isHomeRowsLoading: boolean;
   error: string | null;
 }
 
-const initialState: JellyfinState = {
+export const initialState: JellyfinState = {
   accessToken: null,
   userId: null,
   userName: null,
   serverUrl: null,
   libraries: [],
   libraryItems: {},
+  resumeItems: [],
+  nextUpItems: [],
+  latestMovies: [],
+  latestShows: [],
   isAuthLoading: true,
   isLibrariesLoading: false,
+  isHomeRowsLoading: false,
   error: null,
 };
 
@@ -65,6 +75,32 @@ export const fetchLibraryItems = createAsyncThunk(
   },
 );
 
+// Fetches the four curated Home rows in parallel. Depends on `libraries` already
+// being loaded so it can resolve the movies/tvshows parentIds for "recently added".
+export const fetchHomeRows = createAsyncThunk(
+  'jellyfin/fetchHomeRows',
+  async (_: void, { getState }) => {
+    const state = (getState() as any).jellyfin as JellyfinState;
+    const { accessToken, userId, libraries } = state;
+    if (!accessToken || !userId) {
+      throw new Error('Not authenticated');
+    }
+    const moviesLib = libraries.find((l) => l.CollectionType === 'movies');
+    const showsLib = libraries.find((l) => l.CollectionType === 'tvshows');
+    const [resumeItems, nextUpItems, latestMovies, latestShows] = await Promise.all([
+      JellyfinClient.getResumeItems(accessToken, userId),
+      JellyfinClient.getNextUp(accessToken, userId),
+      moviesLib?.Id
+        ? JellyfinClient.getLatestMedia(accessToken, userId, moviesLib.Id, 'Movie')
+        : Promise.resolve([]),
+      showsLib?.Id
+        ? JellyfinClient.getLatestMedia(accessToken, userId, showsLib.Id, 'Series')
+        : Promise.resolve([]),
+    ]);
+    return { resumeItems, nextUpItems, latestMovies, latestShows };
+  },
+);
+
 const jellyfinSlice = createSlice({
   name: 'jellyfin',
   initialState,
@@ -91,6 +127,10 @@ const jellyfinSlice = createSlice({
       state.serverUrl = null;
       state.libraries = [];
       state.libraryItems = {};
+      state.resumeItems = [];
+      state.nextUpItems = [];
+      state.latestMovies = [];
+      state.latestShows = [];
       state.isAuthLoading = false;
     },
   },
@@ -125,6 +165,21 @@ const jellyfinSlice = createSlice({
       })
       .addCase(fetchLibraryItems.fulfilled, (state, action) => {
         state.libraryItems[action.payload.libraryId] = action.payload.items;
+      })
+      .addCase(fetchHomeRows.pending, (state) => {
+        state.isHomeRowsLoading = true;
+        state.error = null;
+      })
+      .addCase(fetchHomeRows.fulfilled, (state, action) => {
+        state.isHomeRowsLoading = false;
+        state.resumeItems = action.payload.resumeItems;
+        state.nextUpItems = action.payload.nextUpItems;
+        state.latestMovies = action.payload.latestMovies;
+        state.latestShows = action.payload.latestShows;
+      })
+      .addCase(fetchHomeRows.rejected, (state, action) => {
+        state.isHomeRowsLoading = false;
+        state.error = action.error.message ?? 'Failed to fetch home rows';
       });
   },
 });

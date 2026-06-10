@@ -4,6 +4,7 @@ import { ItemFields } from '@jellyfin/sdk/lib/generated-client/models';
 import { getItemsApi } from '@jellyfin/sdk/lib/utils/api/items-api';
 import { getMediaInfoApi } from '@jellyfin/sdk/lib/utils/api/media-info-api';
 import { getPlaystateApi } from '@jellyfin/sdk/lib/utils/api/playstate-api';
+import { getTvShowsApi } from '@jellyfin/sdk/lib/utils/api/tv-shows-api';
 import { getUserLibraryApi } from '@jellyfin/sdk/lib/utils/api/user-library-api';
 import { getUserViewsApi } from '@jellyfin/sdk/lib/utils/api/user-views-api';
 
@@ -147,6 +148,57 @@ const getItemDetails = async (
   const api = authApi(token);
   const response = await getUserLibraryApi(api).getItem({ userId, itemId });
   return response.data;
+};
+
+// Shared request shape for the curated Home rows. Overview + Genres feed RowInfoPanel.
+const HOME_ROW_LIMIT = 20;
+const HOME_FIELDS = [ItemFields.Overview, ItemFields.Genres];
+const HOME_IMAGE_TYPES = ['Primary', 'Backdrop', 'Thumb'] as any;
+
+// Continue Watching — items the user has partially played (movies, series, episodes).
+const getResumeItems = async (token: string, userId: string): Promise<BaseItemDto[]> => {
+  const api = authApi(token);
+  const res = await getItemsApi(api).getResumeItems({
+    userId,
+    includeItemTypes: ['Movie', 'Series', 'Episode'] as any,
+    fields: HOME_FIELDS,
+    enableImageTypes: HOME_IMAGE_TYPES,
+    limit: HOME_ROW_LIMIT,
+  });
+  return res.data.Items ?? [];
+};
+
+// Next Up — the next unwatched episode per series (excluding ones already in progress).
+const getNextUp = async (token: string, userId: string): Promise<BaseItemDto[]> => {
+  const api = authApi(token);
+  const res = await getTvShowsApi(api).getNextUp({
+    userId,
+    fields: HOME_FIELDS,
+    enableImageTypes: HOME_IMAGE_TYPES,
+    enableResumable: false,
+    limit: HOME_ROW_LIMIT,
+  });
+  return res.data.Items ?? [];
+};
+
+// Recently Added in a library. Note: getLatestMedia returns the array directly on
+// `data`, not `data.Items` like the other endpoints.
+const getLatestMedia = async (
+  token: string,
+  userId: string,
+  parentId: string,
+  itemKind: string,
+): Promise<BaseItemDto[]> => {
+  const api = authApi(token);
+  const res = await getUserLibraryApi(api).getLatestMedia({
+    userId,
+    parentId,
+    includeItemTypes: [itemKind] as any,
+    fields: HOME_FIELDS,
+    enableImageTypes: HOME_IMAGE_TYPES,
+    limit: HOME_ROW_LIMIT,
+  });
+  return res.data ?? [];
 };
 
 export interface AudioTrackInfo {
@@ -355,6 +407,9 @@ export default {
   getLibraries,
   getLibraryItems,
   getItemDetails,
+  getResumeItems,
+  getNextUp,
+  getLatestMedia,
   getPlaybackUrl,
   reportPlaybackStart,
   reportPlaybackProgress,

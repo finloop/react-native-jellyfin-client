@@ -12,7 +12,10 @@ import RowInfoPanel from './RowInfoPanel';
 
 const MovieItem = React.memo(
   ({ item, isFocused }: { item: BaseItemDto; isFocused: boolean }) => {
-    const uri = item.Id ? JellyfinClient.getItemImageUrl(item.Id) : undefined;
+    // Episodes carry their show in SeriesId — prefer the series' portrait poster over
+    // the episode's wide still so every card keeps a consistent portrait shape.
+    const posterId = item.SeriesId ?? item.Id;
+    const uri = posterId ? JellyfinClient.getItemImageUrl(posterId) : undefined;
     return (
       <View style={[styles.thumbnail, isFocused && styles.thumbnailFocused]}>
         {uri ? (

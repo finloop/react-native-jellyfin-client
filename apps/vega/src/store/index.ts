@@ -1,6 +1,6 @@
 import AsyncStorage from '@amazon-devices/react-native-async-storage__async-storage';
 import { configureStore } from '@reduxjs/toolkit';
-import jellyfinReducer, { JellyfinState } from './jellyfinSlice';
+import jellyfinReducer, { JellyfinState, initialState as jellyfinInitialState } from './jellyfinSlice';
 
 interface Store {
   jellyfin: JellyfinState;
@@ -32,11 +32,16 @@ export let store: any;
 
 export const initializeStore = async () => {
   const preloadedState = await loadState();
+  // Merge persisted state over the slice defaults so state saved by an older app
+  // version (missing newer fields) rehydrates with those fields defined.
+  const mergedState = preloadedState
+    ? { jellyfin: { ...jellyfinInitialState, ...preloadedState.jellyfin } }
+    : undefined;
   store = configureStore({
     reducer: {
       jellyfin: jellyfinReducer,
     },
-    preloadedState,
+    preloadedState: mergedState,
   });
 
   store.subscribe(() => {
