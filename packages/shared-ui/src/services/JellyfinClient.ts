@@ -136,6 +136,19 @@ const getLibraryItems = async (
   return response.data.Items ?? [];
 };
 
+// Full metadata for a single item (People, Genres, RunTimeTicks, ProductionYear,
+// CommunityRating, OfficialRating, Overview, …) — getItem returns these by default,
+// unlike getLibraryItems which restricts fields to keep the listing query light.
+const getItemDetails = async (
+  token: string,
+  userId: string,
+  itemId: string,
+): Promise<BaseItemDto> => {
+  const api = authApi(token);
+  const response = await getUserLibraryApi(api).getItem({ userId, itemId });
+  return response.data;
+};
+
 export interface AudioTrackInfo {
   index: number;
   label: string;
@@ -341,6 +354,7 @@ export default {
   authenticateWithQuickConnect,
   getLibraries,
   getLibraryItems,
+  getItemDetails,
   getPlaybackUrl,
   reportPlaybackStart,
   reportPlaybackProgress,
