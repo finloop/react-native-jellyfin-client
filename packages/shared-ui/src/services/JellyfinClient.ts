@@ -327,6 +327,13 @@ const markPlayed = async (token: string, userId: string, itemId: string): Promis
 const getItemImageUrl = (itemId: string): string =>
   `${SERVER_URL}/Items/${itemId}/Images/Primary`;
 
+// Landscape backdrop for an item, falling back to the Primary (poster) image when
+// the item has no backdrop so the caller never renders a broken image.
+const getItemBackdropUrl = (item: Pick<BaseItemDto, 'Id' | 'BackdropImageTags'>): string =>
+  (item.BackdropImageTags?.length ?? 0) > 0
+    ? `${SERVER_URL}/Items/${item.Id}/Images/Backdrop/0`
+    : `${SERVER_URL}/Items/${item.Id}/Images/Primary`;
+
 export default {
   SERVER_URL,
   initiateQuickConnect,
@@ -340,5 +347,6 @@ export default {
   reportPlaybackStopped,
   markPlayed,
   getItemImageUrl,
+  getItemBackdropUrl,
   COLLECTION_TYPE_TO_ITEM_KIND,
 };
