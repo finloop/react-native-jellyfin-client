@@ -22,6 +22,7 @@
     "dev:vega": "yarn workspace @multi-tv/vega start",
     "dev:vega:device": "vega virtual-device start && vega device start-port-forwarding --device VirtualDevice -p 8081 --forward false",
     "dev:vega:install": "vega run-app $(find . -name vega_aarch64.vpkg | grep Debug | head -n 1)",
+    "dev:vega:launch": "vega device launch-app --app-name com.giolaq.multitv.vega.main",
     "run:vega": "",
     "build:all": "yarn workspaces foreach -pt run build",
     "build:vega": "yarn workspace @multi-tv/vega run build",
