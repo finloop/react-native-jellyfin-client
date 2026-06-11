@@ -22,9 +22,9 @@ It's built on top of the [react-native-multi-tv-app-sample](https://github.com/A
 | :---: | :---: |
 | ![Details](docs/screenshots/details.jpg) | ![Episodes](docs/screenshots/episodes.jpg) |
 
-| Player — audio / subtitle / quality controls |
-| :---: |
-| ![Player](docs/screenshots/player.jpg) |
+| Search — on-screen keyboard & live results | Player — audio / subtitle / quality controls |
+| :---: | :---: |
+| ![Search](docs/screenshots/search.jpg) | ![Player](docs/screenshots/player.jpg) |
 
 ## Features
 
