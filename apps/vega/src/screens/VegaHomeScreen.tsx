@@ -1,19 +1,27 @@
 import React, { useCallback, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@amazon-devices/react-navigation__native';
 import type { NativeStackNavigationProp } from '@amazon-devices/react-navigation__native-stack';
-import { SpatialNavigationRoot, SpatialNavigationScrollView } from 'react-tv-space-navigation';
+import { SpatialNavigationRoot } from 'react-tv-space-navigation';
 import { scaledPixels, colors, safeZones, JellyfinClient } from '@multi-tv/shared-ui';
 import type { RootStackParamList } from '../navigation/types';
 import type { RootState, AppDispatch } from '../store';
 import { loadStoredAuth, fetchLibraries, fetchHomeRows } from '../store/jellyfinSlice';
 import type { BaseItemDto } from '@jellyfin/sdk/lib/generated-client/models';
 import HomeRow from '../components/HomeRow';
-import { PANEL_HEIGHT } from '../components/RowInfoPanel';
 import { useContentFocusRoot } from '../hooks/useContentFocusRoot';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Main'>;
+
+// We own the vertical scroll instead of using SpatialNavigationScrollView: its scroll
+// target is measured from the live layout *before* React re-renders, so navigating down
+// measures while the row you just left still has its info panel expanded — inflating the
+// target by PANEL_HEIGHT and overshooting. Instead we drive an Animated translateY from
+// the active row index, using each row's stable collapsed height, so the target is correct
+// on the first try and lands in a single motion.
+const OFFSET_FROM_START = scaledPixels(60);
+const CONTENT_PADDING_TOP = scaledPixels(40);
 
 export default function VegaHomeScreen() {
   const navigation = useNavigation<NavigationProp>();
@@ -71,6 +79,34 @@ export default function VegaHomeScreen() {
     [navigation, accessToken, userId],
   );
 
+  // Owned vertical scroll. `blockHeights[i]` is row i's collapsed (panel-excluded) height,
+  // reported by each row's onLayout; the scroll target for the active row is the sum of the
+  // heights above it, so it never depends on the in-flux panel animation.
+  const blockHeights = useRef<number[]>([]);
+  const translateY = useRef(new Animated.Value(0)).current;
+
+  const handleMeasureBlock = useCallback((index: number, height: number) => {
+    blockHeights.current[index] = height;
+  }, []);
+
+  const handleActivate = useCallback(
+    (index: number) => {
+      let target = CONTENT_PADDING_TOP - OFFSET_FROM_START;
+      for (let i = 0; i < index; i++) {
+        target += blockHeights.current[i] ?? 0;
+      }
+      // Keep the focused row a fixed distance from the top; never scroll above the start.
+      const clamped = Math.max(0, target);
+      Animated.timing(translateY, {
+        toValue: -clamped,
+        duration: 220,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    },
+    [translateY],
+  );
+
   // Only take over the screen on the very first load (before any data exists).
   // Once the rows have loaded once, later background refetches keep showing the
   // cached rows and update them in place, so returning to Home never re-blanks.
@@ -98,21 +134,22 @@ export default function VegaHomeScreen() {
   return (
     <SpatialNavigationRoot isActive={isActive} onDirectionHandledWithoutMovement={onDirectionHandledWithoutMovement}>
       <View style={gridStyles.container}>
-        <SpatialNavigationScrollView
-          offsetFromStart={scaledPixels(60)}
-          style={gridStyles.scrollContent}
-          contentContainerStyle={gridStyles.scrollContentContainer}
-        >
-          {rows.map((row, index) => (
-            <HomeRow
-              key={row.key}
-              title={row.title}
-              items={row.items}
-              onSelect={onSelect}
-              isFirst={index === 0}
-            />
-          ))}
-        </SpatialNavigationScrollView>
+        <View style={gridStyles.viewport}>
+          <Animated.View style={[gridStyles.content, { transform: [{ translateY }] }]}>
+            {rows.map((row, index) => (
+              <HomeRow
+                key={row.key}
+                index={index}
+                title={row.title}
+                items={row.items}
+                onSelect={onSelect}
+                isFirst={index === 0}
+                onMeasureBlock={handleMeasureBlock}
+                onActivate={handleActivate}
+              />
+            ))}
+          </Animated.View>
+        </View>
       </View>
     </SpatialNavigationRoot>
   );
@@ -123,13 +160,13 @@ const gridStyles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  scrollContent: {
+  // Clips the rows as the content translates up/down (our own scroll viewport).
+  viewport: {
     flex: 1,
+    overflow: 'hidden',
     marginBottom: scaledPixels(safeZones.actionSafe.vertical),
   },
-  // Reserve room so the last row's info panel can scroll fully into view.
-  scrollContentContainer: {
-    paddingTop: scaledPixels(40),
-    paddingBottom: PANEL_HEIGHT,
+  content: {
+    paddingTop: CONTENT_PADDING_TOP,
   },
 });

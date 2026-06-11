@@ -17,9 +17,23 @@ type HomeRowProps = {
   onSelect: (item: BaseItemDto) => void;
   /** Only the first row carries DefaultFocus, so initial focus is unambiguous. */
   isFirst: boolean;
+  /** Position in the row list; used by the screen to compute the scroll target. */
+  index: number;
+  /** Reports the row's collapsed (panel-excluded) height for the scroll math. */
+  onMeasureBlock: (index: number, height: number) => void;
+  /** Fires when this row becomes active so the screen can scroll it into place. */
+  onActivate: (index: number) => void;
 };
 
-function HomeRow({ title, items, onSelect, isFirst }: HomeRowProps) {
+function HomeRow({
+  title,
+  items,
+  onSelect,
+  isFirst,
+  index,
+  onMeasureBlock,
+  onActivate,
+}: HomeRowProps) {
   const [isActive, setIsActive] = useState(false);
   const [focusedItem, setFocusedItem] = useState<BaseItemDto | null>(items[0] ?? null);
 
@@ -58,15 +72,26 @@ function HomeRow({ title, items, onSelect, isFirst }: HomeRowProps) {
   );
 
   return (
-    <View style={styles.rowContainer}>
-      <Text style={styles.rowTitle}>{title}</Text>
-      <View style={styles.listWrapper}>
-        <SpatialNavigationNode
-          onActive={() => setIsActive(true)}
-          onInactive={() => setIsActive(false)}
-        >
-          {isFirst ? <DefaultFocus>{list}</DefaultFocus> : list}
-        </SpatialNavigationNode>
+    <View>
+      {/* The "block" is the row's collapsed footprint (title + poster strip) — it never
+          changes height, so reporting it lets the screen compute a stable scroll target
+          that ignores the info panel's expand/collapse. The panel is a sibling below it. */}
+      <View
+        style={styles.block}
+        onLayout={(e) => onMeasureBlock(index, e.nativeEvent.layout.height)}
+      >
+        <Text style={styles.rowTitle}>{title}</Text>
+        <View style={styles.listWrapper}>
+          <SpatialNavigationNode
+            onActive={() => {
+              setIsActive(true);
+              onActivate(index);
+            }}
+            onInactive={() => setIsActive(false)}
+          >
+            {isFirst ? <DefaultFocus>{list}</DefaultFocus> : list}
+          </SpatialNavigationNode>
+        </View>
       </View>
       <RowInfoPanel item={focusedItem} progress={progress} />
     </View>
@@ -76,7 +101,7 @@ function HomeRow({ title, items, onSelect, isFirst }: HomeRowProps) {
 export default React.memo(HomeRow);
 
 const styles = StyleSheet.create({
-  rowContainer: {
+  block: {
     paddingTop: scaledPixels(16),
   },
   rowTitle: {
