@@ -258,6 +258,29 @@ const getLatestMedia = async (
   return res.data ?? [];
 };
 
+// Full-text search across the user's library. Returns videos only (Movie/Series/Episode)
+// so every hit opens cleanly in the shared Details screen. Fields/images mirror the Home
+// rows so result cards (and a later Details navigation) have Overview + a poster to show.
+const search = async (
+  token: string,
+  userId: string,
+  searchTerm: string,
+): Promise<BaseItemDto[]> => {
+  const term = searchTerm.trim();
+  if (!term) return [];
+  const api = authApi(token);
+  const res = await getItemsApi(api).getItems({
+    userId,
+    searchTerm: term,
+    includeItemTypes: ['Movie', 'Series', 'Episode'] as any,
+    fields: HOME_FIELDS,
+    enableImageTypes: HOME_IMAGE_TYPES,
+    recursive: true,
+    limit: 60,
+  });
+  return res.data.Items ?? [];
+};
+
 export interface AudioTrackInfo {
   index: number;
   label: string;
@@ -473,6 +496,7 @@ export default {
   getEpisodes,
   getSeriesNextUp,
   getLatestMedia,
+  search,
   getPlaybackUrl,
   reportPlaybackStart,
   reportPlaybackProgress,
