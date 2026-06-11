@@ -46,12 +46,14 @@ export const KEYBOARD_WIDTH = keyWidth(6);
 
 type KeyProps = {
   def: KeyDef;
+  /** Column span [start, end] in grid units, for index-aligned vertical navigation. */
+  indexRange: [number, number];
   onPress: (value: string) => void;
 };
 
-function Key({ def, onPress }: KeyProps) {
+function Key({ def, indexRange, onPress }: KeyProps) {
   return (
-    <SpatialNavigationFocusableView onSelect={() => onPress(def.value)}>
+    <SpatialNavigationFocusableView indexRange={indexRange} onSelect={() => onPress(def.value)}>
       {({ isFocused }) => (
         <View style={[styles.key, { width: keyWidth(def.span) }, isFocused && styles.keyFocused]}>
           <Text style={[styles.keyLabel, isFocused && styles.keyLabelFocused]} numberOfLines={1}>
@@ -61,6 +63,22 @@ function Key({ def, onPress }: KeyProps) {
       )}
     </SpatialNavigationFocusableView>
   );
+}
+
+/**
+ * Assign each key a column `indexRange` from the running sum of spans in its row. With
+ * `alignInGrid`, LRUD aligns vertical moves by column index — but a key that spans
+ * multiple columns (the action row) must declare the range it covers, or Down lands by
+ * raw child-index instead (bug: Down on "6" → "Clear" instead of "Del").
+ */
+function rowWithRanges(row: KeyDef[]): { def: KeyDef; indexRange: [number, number] }[] {
+  let col = 0;
+  return row.map((def) => {
+    const span = def.span ?? 1;
+    const indexRange: [number, number] = [col, col + span - 1];
+    col += span;
+    return { def, indexRange };
+  });
 }
 
 /**
@@ -81,7 +99,9 @@ function VegaKeyboard({
   layout?: KeyDef[][];
 }) {
   const renderKey = useCallback(
-    (def: KeyDef) => <Key key={def.value} def={def} onPress={onKeyPress} />,
+    ({ def, indexRange }: { def: KeyDef; indexRange: [number, number] }) => (
+      <Key key={def.value} def={def} indexRange={indexRange} onPress={onKeyPress} />
+    ),
     [onKeyPress],
   );
 
@@ -89,11 +109,11 @@ function VegaKeyboard({
     <DefaultFocus>
       {/* alignInGrid (LRUD isIndexAlign) keeps the column when moving between rows —
           without it each row restores its last-focused key, so Down drifts sideways
-          (e.g. S → 1 instead of S → Y). */}
+          (e.g. S → 1 instead of S → Y). Per-key indexRange handles multi-column keys. */}
       <SpatialNavigationView direction="vertical" alignInGrid style={styles.grid}>
         {layout.map((row, i) => (
           <SpatialNavigationView key={i} direction="horizontal" style={styles.row}>
-            {row.map(renderKey)}
+            {rowWithRanges(row).map(renderKey)}
           </SpatialNavigationView>
         ))}
       </SpatialNavigationView>
