@@ -3,8 +3,9 @@ import { createNativeStackNavigator } from '@amazon-devices/react-navigation__na
 import { RootStackParamList } from './types';
 import VegaMainScreen from './VegaMainScreen';
 import JellyfinLoginScreen from '../screens/JellyfinLoginScreen';
+import VegaServerSelectScreen from '../screens/VegaServerSelectScreen';
 import JellyfinStorage from '../services/jellyfin/JellyfinStorage';
-import { DetailsScreen } from '@multi-tv/shared-ui';
+import { DetailsScreen, JellyfinClient } from '@multi-tv/shared-ui';
 import VegaPlayerScreen from '../screens/player/VegaPlayerScreen';
 import VegaSettingsScreen from '../screens/VegaSettingsScreen';
 
@@ -14,9 +15,20 @@ export default function VegaRootNavigator() {
   const [initialRoute, setInitialRoute] = useState<string | null>(null);
 
   useEffect(() => {
-    JellyfinStorage.loadAuth().then(auth => {
-      setInitialRoute(auth ? 'Main' : 'JellyfinLogin');
-    });
+    (async () => {
+      const auth = await JellyfinStorage.loadAuth();
+      if (auth) {
+        // Re-point the client at the server this session was authenticated against.
+        JellyfinClient.setServerUrl(auth.serverUrl);
+        setInitialRoute('Main');
+        return;
+      }
+      // Logged out: apply any previously-chosen server so the select screen prefills it,
+      // then let the user confirm or change it before logging in.
+      const server = await JellyfinStorage.loadServer();
+      if (server) JellyfinClient.setServerUrl(server);
+      setInitialRoute('ServerSelect');
+    })();
   }, []);
 
   if (!initialRoute) {
@@ -30,6 +42,7 @@ export default function VegaRootNavigator() {
         headerShown: false,
       }}
     >
+      <Stack.Screen name="ServerSelect" component={VegaServerSelectScreen} />
       <Stack.Screen name="JellyfinLogin" component={JellyfinLoginScreen} />
       <Stack.Screen name="Main" component={VegaMainScreen} />
       <Stack.Screen name="Settings" component={VegaSettingsScreen} />

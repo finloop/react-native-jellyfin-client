@@ -2,6 +2,7 @@
 export type TopTab = 'Search' | 'Home' | 'Libraries' | 'Favourites';
 
 export type RootStackParamList = {
+  ServerSelect: undefined;
   JellyfinLogin: undefined;
   Main: undefined;
   Settings: undefined;

@@ -13,37 +13,49 @@ export const KEY_SPACE = 'SPACE';
 export const KEY_DELETE = 'DELETE';
 export const KEY_CLEAR = 'CLEAR';
 
-// Alphabetical layout (6 columns) — easier to scan with a D-pad than QWERTY. The action
-// row (Space / Delete / Clear) spans the bottom.
-const ROWS: string[][] = [
+/** A single key. `span` is the key's width in column units (default 1). */
+export type KeyDef = { label: string; value: string; span?: number };
+
+const KEY_GAP = scaledPixels(12);
+const KEY_SIZE = scaledPixels(76);
+
+const keyWidth = (span = 1) => span * KEY_SIZE + (span - 1) * KEY_GAP;
+
+// Default layout — the Search keyboard: alphabetical 6-col grid (easier to scan with a
+// D-pad than QWERTY) over an action row of Space / Del / Clear, each spanning two columns.
+const ALPHA_ROWS: KeyDef[][] = [
   ['A', 'B', 'C', 'D', 'E', 'F'],
   ['G', 'H', 'I', 'J', 'K', 'L'],
   ['M', 'N', 'O', 'P', 'Q', 'R'],
   ['S', 'T', 'U', 'V', 'W', 'X'],
   ['Y', 'Z', '0', '1', '2', '3'],
   ['4', '5', '6', '7', '8', '9'],
+].map((row) => row.map((c) => ({ label: c, value: c })));
+
+const ALPHA_LAYOUT: KeyDef[][] = [
+  ...ALPHA_ROWS,
+  [
+    { label: 'Space', value: KEY_SPACE, span: 2 },
+    { label: 'Del', value: KEY_DELETE, span: 2 },
+    { label: 'Clear', value: KEY_CLEAR, span: 2 },
+  ],
 ];
 
-const COLUMNS = 6;
-const KEY_GAP = scaledPixels(12);
-const KEY_SIZE = scaledPixels(76);
-// Action keys each span two letter columns (so three of them fill the row width).
-const ACTION_KEY_WIDTH = KEY_SIZE * 2 + KEY_GAP;
+/** Width of the default 6-column layout, exported so the Search pane can size to match. */
+export const KEYBOARD_WIDTH = keyWidth(6);
 
 type KeyProps = {
-  label: string;
-  value: string;
-  width: number;
+  def: KeyDef;
   onPress: (value: string) => void;
 };
 
-function Key({ label, value, width, onPress }: KeyProps) {
+function Key({ def, onPress }: KeyProps) {
   return (
-    <SpatialNavigationFocusableView onSelect={() => onPress(value)}>
+    <SpatialNavigationFocusableView onSelect={() => onPress(def.value)}>
       {({ isFocused }) => (
-        <View style={[styles.key, { width }, isFocused && styles.keyFocused]}>
+        <View style={[styles.key, { width: keyWidth(def.span) }, isFocused && styles.keyFocused]}>
           <Text style={[styles.keyLabel, isFocused && styles.keyLabelFocused]} numberOfLines={1}>
-            {label}
+            {def.label}
           </Text>
         </View>
       )}
@@ -52,43 +64,41 @@ function Key({ label, value, width, onPress }: KeyProps) {
 }
 
 /**
- * On-screen keyboard for the Search screen. Fire TV has no hardware text entry under
- * spatial navigation, so the query is composed key-by-key with the D-pad. Letter keys
- * emit their character; the action row emits the KEY_* tokens. Keys are explicitly sized
- * (not flexed) — `SpatialNavigationView` rows don't reliably stretch flex children, so
- * fixed widths keep the grid aligned. Wrapped in `DefaultFocus` so the first key is
- * focused when the screen mounts.
+ * On-screen keyboard for D-pad text entry (Fire TV has no hardware text input under
+ * spatial navigation). Letter keys emit their character; the action tokens (KEY_*) are
+ * handled by the parent. Keys are explicitly sized — `SpatialNavigationView` rows don't
+ * reliably stretch flex children — so each cell width comes from its column `span`.
+ * Wrapped in `DefaultFocus` so the first key is focused on mount.
+ *
+ * Pass `layout` to override the default alphabetical layout (e.g. the URL keyboard on the
+ * server-selection screen).
  */
-function VegaKeyboard({ onKeyPress }: { onKeyPress: (value: string) => void }) {
+function VegaKeyboard({
+  onKeyPress,
+  layout = ALPHA_LAYOUT,
+}: {
+  onKeyPress: (value: string) => void;
+  layout?: KeyDef[][];
+}) {
   const renderKey = useCallback(
-    (char: string) => (
-      <Key key={char} label={char} value={char} width={KEY_SIZE} onPress={onKeyPress} />
-    ),
+    (def: KeyDef) => <Key key={def.value} def={def} onPress={onKeyPress} />,
     [onKeyPress],
   );
 
   return (
     <DefaultFocus>
       <SpatialNavigationView direction="vertical" style={styles.grid}>
-        {ROWS.map((row, i) => (
+        {layout.map((row, i) => (
           <SpatialNavigationView key={i} direction="horizontal" style={styles.row}>
             {row.map(renderKey)}
           </SpatialNavigationView>
         ))}
-        <SpatialNavigationView direction="horizontal" style={styles.row}>
-          <Key label="Space" value={KEY_SPACE} width={ACTION_KEY_WIDTH} onPress={onKeyPress} />
-          <Key label="Del" value={KEY_DELETE} width={ACTION_KEY_WIDTH} onPress={onKeyPress} />
-          <Key label="Clear" value={KEY_CLEAR} width={ACTION_KEY_WIDTH} onPress={onKeyPress} />
-        </SpatialNavigationView>
       </SpatialNavigationView>
     </DefaultFocus>
   );
 }
 
 export default React.memo(VegaKeyboard);
-
-/** Total keyboard width, exported so the screen can size the keyboard pane to match. */
-export const KEYBOARD_WIDTH = KEY_SIZE * COLUMNS + KEY_GAP * (COLUMNS - 1);
 
 const styles = StyleSheet.create({
   grid: {

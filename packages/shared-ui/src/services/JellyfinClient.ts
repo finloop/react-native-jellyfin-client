@@ -8,15 +8,39 @@ import { getTvShowsApi } from '@jellyfin/sdk/lib/utils/api/tv-shows-api';
 import { getUserLibraryApi } from '@jellyfin/sdk/lib/utils/api/user-library-api';
 import { getUserViewsApi } from '@jellyfin/sdk/lib/utils/api/user-views-api';
 
+// The public Jellyfin demo server — the default until the user picks their own.
 export const SERVER_URL = 'https://demo.jellyfin.org/stable';
+
+// Runtime override set from the server-selection screen (or restored from storage /
+// persisted auth at startup). All requests and URL builders read `getServerUrl()`, so a
+// single setter re-points the whole client without re-instantiating anything.
+let overrideUrl: string | null = null;
+
+export const getServerUrl = (): string => overrideUrl ?? SERVER_URL;
+export const setServerUrl = (url: string | null): void => {
+  overrideUrl = url && url.trim() ? normalizeServerUrl(url) : null;
+};
+
+/**
+ * Coerce user input into a usable base URL: trim whitespace, default to https:// when no
+ * scheme is given, and strip trailing slashes. A trailing slash matters — the base is a
+ * sub-path origin, so `…/stable/` would yield malformed `stable//Items` URLs.
+ */
+export const normalizeServerUrl = (input: string): string => {
+  let url = input.trim();
+  if (!/^https?:\/\//i.test(url)) {
+    url = `https://${url}`;
+  }
+  return url.replace(/\/+$/, '');
+};
 
 const jellyfin = new Jellyfin({
   clientInfo: { name: 'MultiTV Vega', version: '1.0.0' },
   deviceInfo: { name: 'Fire TV', id: 'multitv-vega-device' },
 });
 
-const unauthApi = () => jellyfin.createApi(SERVER_URL);
-const authApi = (token: string) => jellyfin.createApi(SERVER_URL, token);
+const unauthApi = () => jellyfin.createApi(getServerUrl());
+const authApi = (token: string) => jellyfin.createApi(getServerUrl(), token);
 
 export interface QuickConnectResult {
   Code: string;
@@ -370,7 +394,7 @@ const getPlaybackUrl = async (
   const fallbackAudioIndex = mediaSource.DefaultAudioStreamIndex ?? audioTracks[0]?.index ?? 0;
 
   if (mediaSource.TranscodingUrl) {
-    const url = new URL(`${SERVER_URL}${mediaSource.TranscodingUrl}`);
+    const url = new URL(`${getServerUrl()}${mediaSource.TranscodingUrl}`);
     // Jellyfin ignores these in the PlaybackInfo body for live sessions, so they
     // must be overridden on the TranscodingUrl query string. -1 = no subtitle.
     if (audioStreamIndex !== undefined) {
@@ -395,7 +419,7 @@ const getPlaybackUrl = async (
 
   const qs = `static=true&api_key=${token}&mediaSourceId=${encodeURIComponent(mediaSourceId)}${playSessionId ? `&PlaySessionId=${encodeURIComponent(playSessionId)}` : ''}`;
   return {
-    url: `${SERVER_URL}/Videos/${itemId}/stream?${qs}`,
+    url: `${getServerUrl()}/Videos/${itemId}/stream?${qs}`,
     format: 'MP4',
     audioTracks,
     audioStreamIndex: audioStreamIndex ?? fallbackAudioIndex,
@@ -469,21 +493,24 @@ const markPlayed = async (token: string, userId: string, itemId: string): Promis
   await getPlaystateApi(api).markPlayedItem({ userId, itemId });
 };
 
-// SERVER_URL must NOT have a trailing slash (it's a sub-path origin), so paths
-// here start with `/`. A trailing slash on SERVER_URL would yield `stable//Items`,
-// which the demo's sub-path reverse proxy 404s.
+// The server base must NOT have a trailing slash (it's a sub-path origin), so paths
+// here start with `/`. A trailing slash would yield `stable//Items`, which the demo's
+// sub-path reverse proxy 404s — `normalizeServerUrl` strips it.
 const getItemImageUrl = (itemId: string): string =>
-  `${SERVER_URL}/Items/${itemId}/Images/Primary`;
+  `${getServerUrl()}/Items/${itemId}/Images/Primary`;
 
 // Landscape backdrop for an item, falling back to the Primary (poster) image when
 // the item has no backdrop so the caller never renders a broken image.
 const getItemBackdropUrl = (item: Pick<BaseItemDto, 'Id' | 'BackdropImageTags'>): string =>
   (item.BackdropImageTags?.length ?? 0) > 0
-    ? `${SERVER_URL}/Items/${item.Id}/Images/Backdrop/0`
-    : `${SERVER_URL}/Items/${item.Id}/Images/Primary`;
+    ? `${getServerUrl()}/Items/${item.Id}/Images/Backdrop/0`
+    : `${getServerUrl()}/Items/${item.Id}/Images/Primary`;
 
 export default {
   SERVER_URL,
+  getServerUrl,
+  setServerUrl,
+  normalizeServerUrl,
   initiateQuickConnect,
   checkQuickConnect,
   authenticateWithQuickConnect,

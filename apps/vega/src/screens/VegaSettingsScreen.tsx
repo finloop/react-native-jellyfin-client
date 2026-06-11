@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { StyleSheet, View, Text } from 'react-native';
+import { useDispatch } from 'react-redux';
 import {
   SpatialNavigationRoot,
   SpatialNavigationScrollView,
@@ -10,6 +11,9 @@ import { useIsFocused, useNavigation } from '@amazon-devices/react-navigation__n
 import type { NativeStackNavigationProp } from '@amazon-devices/react-navigation__native-stack';
 import { FocusablePressable, scaledPixels, colors, safeZones } from '@multi-tv/shared-ui';
 import type { RootStackParamList } from '../navigation/types';
+import type { AppDispatch } from '../store';
+import { clearAuth } from '../store/jellyfinSlice';
+import JellyfinStorage from '../services/jellyfin/JellyfinStorage';
 import { useRemoteBackHandler } from '../hooks/useRemoteBackHandler';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Settings'>;
@@ -23,12 +27,22 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Settings'>;
 export default function VegaSettingsScreen() {
   const isFocused = useIsFocused();
   const navigation = useNavigation<NavigationProp>();
+  const dispatch = useDispatch<AppDispatch>();
   useRemoteBackHandler();
   const [selectedQuality, setSelectedQuality] = useState('Auto');
   const [notifications, setNotifications] = useState(true);
   const [autoplay, setAutoplay] = useState(true);
 
   const qualityOptions = ['Auto', '1080p', '720p', '480p'];
+
+  // Drop the stored token (the source of truth for the startup route) and reset Redux,
+  // then return to server selection — the saved server URL prefills there. Quality/etc.
+  // above are local-only mocks, so only auth needs clearing.
+  const handleLogout = useCallback(async () => {
+    await JellyfinStorage.clearAuth();
+    dispatch(clearAuth());
+    navigation.reset({ index: 0, routes: [{ name: 'ServerSelect' }] });
+  }, [dispatch, navigation]);
 
   return (
     <SpatialNavigationRoot isActive={isFocused}>
@@ -87,6 +101,18 @@ export default function VegaSettingsScreen() {
                   <Text style={styles.infoValue}>1.0.0</Text>
                 </View>
               </View>
+            </View>
+
+            {/* Account */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Account</Text>
+              <SpatialNavigationNode orientation="vertical">
+                <FocusablePressable
+                  text="Log out"
+                  onSelect={handleLogout}
+                  style={styles.logoutButton}
+                />
+              </SpatialNavigationNode>
             </View>
           </View>
         </SpatialNavigationScrollView>
@@ -152,6 +178,11 @@ const styles = StyleSheet.create({
   toggleButton: {
     alignSelf: 'flex-start',
     minWidth: scaledPixels(300),
+  },
+  logoutButton: {
+    alignSelf: 'flex-start',
+    minWidth: scaledPixels(300),
+    backgroundColor: colors.error,
   },
   infoContainer: {
     backgroundColor: colors.card,

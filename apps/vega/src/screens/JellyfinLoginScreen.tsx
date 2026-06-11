@@ -50,7 +50,7 @@ const JellyfinLoginScreen = ({ navigation }: Props) => {
               accessToken: authResult.AccessToken,
               userId: authResult.User.Id,
               userName: authResult.User.Name,
-              serverUrl: JellyfinClient.SERVER_URL,
+              serverUrl: JellyfinClient.getServerUrl(),
             });
             navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
           }
