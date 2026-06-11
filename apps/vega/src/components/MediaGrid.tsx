@@ -12,12 +12,22 @@ import type { BaseItemDto } from '@jellyfin/sdk/lib/generated-client/models';
 export const GRID_H_INSET = scaledPixels(safeZones.actionSafe.horizontal);
 /** Gap between cards in a row; cards carry this as a trailing marginEnd. */
 export const GRID_ITEM_GAP = scaledPixels(20);
-// The top bar overlays the top of the content and the virtualized grid anchors its
-// content to its mount position (it doesn't reflow when the bar animates in, and its
-// headerSize is read once), so reserve a CONSTANT top zone tall enough to always clear
-// the bar — whether it's hidden or showing. Matches BAR_HEIGHT in VegaTopBar (120).
-const TOP_INSET = scaledPixels(120 + 24);
-const TITLE_HEIGHT = scaledPixels(70);
+// The title sits near the top with a normal TV safe-zone margin; it must NOT be pushed
+// down by the focus inset.
+const TITLE_TOP_INSET = scaledPixels(safeZones.titleSafe.vertical);
+// PERSISTENT focus inset, applied as the GAP between the title and the grid viewport (a
+// marginTop, so it stays empty and outside the clip box). The grid uses `stick-to-start`
+// scrolling, which pins the focused row to the TOP of its scroll viewport — so an inset
+// provided via the grid `header` scrolls away the instant the first row is focused (it
+// always is, via DefaultFocus), leaving the focused row flush. Pushing the viewport down
+// instead gives a fixed offset where every focused row sticks (upper-center) without a
+// large empty band on first open, while keeping the title pinned at the top.
+const GRID_TOP_GAP = scaledPixels(105);
+// Headroom INSIDE the clip box so the focused row (pinned to the viewport top by
+// stick-to-start) isn't clipped at its 1.08 scale + glow. Safe against bleed: the band it
+// exposes only ever shows the empty headroom each row reserves below its title block, not
+// a neighbouring poster.
+const GRID_FOCUS_HEADROOM = scaledPixels(45);
 
 type MediaGridProps = {
   data: BaseItemDto[];
@@ -62,30 +72,26 @@ function MediaGrid({
     [onSelect, onFocus, renderCard],
   );
 
-  const header = (
-    <View style={styles.header}>
+  return (
+    <View style={styles.container}>
       {title ? (
         <Text style={styles.title} numberOfLines={1}>
           {title}
         </Text>
       ) : null}
-    </View>
-  );
-  const headerSize = TOP_INSET + (title ? TITLE_HEIGHT : 0);
-
-  return (
-    <View style={styles.container}>
-      <DefaultFocus>
-        <SpatialNavigationVirtualizedGrid
-          data={data}
-          numberOfColumns={numberOfColumns}
-          itemHeight={itemHeight}
-          renderItem={renderItem}
-          header={header}
-          headerSize={headerSize}
-          rowContainerStyle={styles.row}
-        />
-      </DefaultFocus>
+      {/* Clip the grid to its own box so rows scrolled above the viewport top
+          (stick-to-start) don't bleed up over the title and top inset. */}
+      <View style={styles.viewport}>
+        <DefaultFocus>
+          <SpatialNavigationVirtualizedGrid
+            data={data}
+            numberOfColumns={numberOfColumns}
+            itemHeight={itemHeight}
+            renderItem={renderItem}
+            rowContainerStyle={styles.row}
+          />
+        </DefaultFocus>
+      </View>
     </View>
   );
 }
@@ -95,18 +101,27 @@ export default React.memo(MediaGrid);
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    // Keep the title near the top with a normal safe-zone margin.
+    paddingTop: TITLE_TOP_INSET,
+  },
+  viewport: {
+    flex: 1,
+    overflow: 'hidden',
+    // Focus inset lives here as an EMPTY gap (marginTop is outside the clip box, so no
+    // scrolled content bleeds into it) — see GRID_TOP_GAP note above.
+    marginTop: GRID_TOP_GAP,
+    // Headroom inside the clip box for the focused card's scale + glow — see note above.
+    paddingTop: GRID_FOCUS_HEADROOM,
   },
   row: {
-    paddingHorizontal: GRID_H_INSET,
-  },
-  header: {
-    paddingTop: TOP_INSET,
     paddingHorizontal: GRID_H_INSET,
   },
   title: {
     color: colors.text,
     fontSize: scaledPixels(44),
     fontWeight: 'bold',
+    paddingHorizontal: GRID_H_INSET,
+    marginBottom: scaledPixels(16),
     textShadowColor: 'rgba(0, 0, 0, 0.9)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 8,

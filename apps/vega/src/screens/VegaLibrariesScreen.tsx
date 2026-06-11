@@ -26,7 +26,7 @@ const VIDEO_COLLECTION_TYPES = new Set(['movies', 'tvshows', 'homevideos']);
 
 // Item-grid layout, derived from screen width so each row fills the safe-zone width
 // (the grid only chunks rows — cell width comes from the card itself).
-const ITEM_COLUMNS = 6;
+const ITEM_COLUMNS = 7;
 const ITEM_CARD_WIDTH =
   (Dimensions.get('window').width - 2 * GRID_H_INSET) / ITEM_COLUMNS - GRID_ITEM_GAP;
 const ITEM_POSTER_HEIGHT = ITEM_CARD_WIDTH * (350 / 220);
