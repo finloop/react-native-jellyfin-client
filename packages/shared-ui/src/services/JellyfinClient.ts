@@ -8,7 +8,7 @@ import { getTvShowsApi } from '@jellyfin/sdk/lib/utils/api/tv-shows-api';
 import { getUserLibraryApi } from '@jellyfin/sdk/lib/utils/api/user-library-api';
 import { getUserViewsApi } from '@jellyfin/sdk/lib/utils/api/user-views-api';
 
-export const SERVER_URL = 'https://video.piotrk.it';
+export const SERVER_URL = 'https://demo.jellyfin.org/stable';
 
 const jellyfin = new Jellyfin({
   clientInfo: { name: 'MultiTV Vega', version: '1.0.0' },
@@ -446,6 +446,9 @@ const markPlayed = async (token: string, userId: string, itemId: string): Promis
   await getPlaystateApi(api).markPlayedItem({ userId, itemId });
 };
 
+// SERVER_URL must NOT have a trailing slash (it's a sub-path origin), so paths
+// here start with `/`. A trailing slash on SERVER_URL would yield `stable//Items`,
+// which the demo's sub-path reverse proxy 404s.
 const getItemImageUrl = (itemId: string): string =>
   `${SERVER_URL}/Items/${itemId}/Images/Primary`;
 
