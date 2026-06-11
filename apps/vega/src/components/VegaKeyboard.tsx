@@ -87,7 +87,10 @@ function VegaKeyboard({
 
   return (
     <DefaultFocus>
-      <SpatialNavigationView direction="vertical" style={styles.grid}>
+      {/* alignInGrid (LRUD isIndexAlign) keeps the column when moving between rows —
+          without it each row restores its last-focused key, so Down drifts sideways
+          (e.g. S → 1 instead of S → Y). */}
+      <SpatialNavigationView direction="vertical" alignInGrid style={styles.grid}>
         {layout.map((row, i) => (
           <SpatialNavigationView key={i} direction="horizontal" style={styles.row}>
             {row.map(renderKey)}
