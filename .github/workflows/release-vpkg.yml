@@ -1,0 +1,62 @@
+name: Release vpkg
+
+# Push a version tag (e.g. `git tag v0.1.0 && git push origin v0.1.0`) to build the
+# Vega app and publish all .vpkg packages (every arch, Debug + Release) to a GitHub Release.
+#
+# How it works: the job builds the Vega SDK "builder" Docker image (tools/vega-sdk-ci/Dockerfile),
+# then runs the app build INSIDE that image. The heavy SDK-install layer is cached across runs via
+# the Buildx GitHub Actions cache, so only the first run pays the SDK download.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # required to create the release and upload assets
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Step 1 — build the Vega SDK builder image (cached across runs)
+      - name: Build Vega SDK builder image
+        uses: docker/build-push-action@v6
+        with:
+          context: tools/vega-sdk-ci
+          tags: vega-sdk-builder:latest
+          load: true # load into the local docker daemon (no registry push)
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Step 2 — build the apps INSIDE the SDK image (workspace bind-mounted)
+      - name: Build vpkgs in SDK image
+        run: |
+          docker run --rm -v "$PWD":/app -w /app vega-sdk-builder:latest \
+            "corepack enable && yarn install --immutable && yarn build:vega && yarn build:vega:debug"
+
+      # Step 3 — collect one vpkg per <arch>-<buildtype> top-level dir.
+      # The build also writes a duplicate under a deep private/kepler/... path; taking only the
+      # top-level *-release / *-debug dirs dedupes, and the dir name becomes the asset suffix so
+      # Debug and Release files don't collide (e.g. vega_aarch64-release.vpkg).
+      - name: Collect vpkgs
+        run: |
+          mkdir -p dist
+          for d in apps/vega/build/*-release apps/vega/build/*-debug; do
+            [ -d "$d" ] || continue
+            variant=$(basename "$d")
+            f=$(find "$d" -maxdepth 1 -name '*.vpkg' | head -1)
+            [ -n "$f" ] && cp "$f" "dist/vega_${variant}.vpkg"
+          done
+          echo "Collected:"
+          ls -lh dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.vpkg
+          generate_release_notes: true
