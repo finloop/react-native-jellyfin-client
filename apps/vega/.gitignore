@@ -10,3 +10,10 @@ build
 node_modules
 CMakeUserPresets.json
 npm-debug.log
+
+# Vendored hls.js runtime build — required by src/hlsjsplayer/HlsJsPlayer.ts and the app
+# build, so it must be tracked despite the broad `dist` rule above. Only the .mjs bundle is
+# needed; its source map and the other variants stay ignored.
+!src/hlsjsplayer/dist/
+src/hlsjsplayer/dist/*
+!src/hlsjsplayer/dist/hls.mjs
